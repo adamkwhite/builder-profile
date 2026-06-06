@@ -99,7 +99,7 @@ jobs:
 
       # Secret scanning (for hardcoded secrets)
       - name: Run Gitleaks secret scanner
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
