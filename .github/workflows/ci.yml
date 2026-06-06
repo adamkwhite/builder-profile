@@ -6,7 +6,7 @@ on:
     paths-ignore: ['*.md', 'docs/**', 'LICENSE', '.gitignore', '.github/**']
   pull_request:
     branches: [main]
-    types: [opened, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review]
     paths-ignore: ['*.md', 'docs/**', 'LICENSE', '.gitignore', '.github/**']
   workflow_dispatch:  # Allow manual triggers
 
