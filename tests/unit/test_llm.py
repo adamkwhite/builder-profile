@@ -12,8 +12,8 @@ from builder_profile.llm import (
 from builder_profile.models import Session, ToolCall
 
 
-def _make_session(**kwargs) -> Session:
-    defaults = {
+def _make_session(**kwargs: object) -> Session:
+    defaults: dict[str, object] = {
         "id": "s1",
         "project_dir": "test",
         "title": "Test Session",
@@ -23,7 +23,7 @@ def _make_session(**kwargs) -> Session:
         "assistant_message_count": 2,
     }
     defaults.update(kwargs)
-    return Session(**defaults)
+    return Session(**defaults)  # type: ignore[arg-type]
 
 
 class TestBuildSessionPrompt:
