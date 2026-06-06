@@ -8,6 +8,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from builder_profile.cache import LLMCache
 from builder_profile.models import Session, WorkStream
 
+_NONE = "(none)"
+
 SCORING_AXES = [
     "velocity",
     "autonomy",
@@ -106,10 +108,10 @@ def score_work_streams(
     cache: LLMCache,
     call_llm_fn,
     concurrency: int = 5,
-) -> list[WorkStream]:
+) -> None:
     to_score = [ws for ws in streams if not ws.scores and ws.sessions]
     if not to_score:
-        return streams
+        return
 
     total = len(to_score)
     completed = 0
@@ -143,8 +145,6 @@ def score_work_streams(
                 ws = futures[future]
                 print(f"  Warning: failed to score {ws.id}: {e}", file=sys.stderr)
 
-    return streams
-
 
 def generate_narratives(
     streams: list[WorkStream],
@@ -152,10 +152,10 @@ def generate_narratives(
     cache: LLMCache,
     call_llm_fn,
     concurrency: int = 5,
-) -> list[WorkStream]:
+) -> None:
     to_narrate = [ws for ws in streams if not ws.narrative and ws.sessions]
     if not to_narrate:
-        return streams
+        return
 
     total = len(to_narrate)
     completed = 0
@@ -189,8 +189,6 @@ def generate_narratives(
                 ws = futures[future]
                 print(f"  Warning: failed to narrate {ws.id}: {e}", file=sys.stderr)
 
-    return streams
-
 
 def synthesize_profile(
     interactive_streams: list[WorkStream],
@@ -222,9 +220,6 @@ def synthesize_profile(
 
 
 def compute_aggregate_scores(streams: list[WorkStream]) -> dict:
-    if not streams:
-        return {}
-
     scored = [ws for ws in streams if ws.scores]
     if not scored:
         return {}
@@ -233,111 +228,120 @@ def compute_aggregate_scores(streams: list[WorkStream]) -> dict:
     weights: dict[str, list[int]] = {axis: [] for axis in SCORING_AXES}
 
     for ws in scored:
-        weight = len(ws.sessions)
-        for axis in SCORING_AXES:
-            if axis in ws.scores:
-                score_data = ws.scores[axis]
-                score_val = score_data.get("score", 0) if isinstance(score_data, dict) else 0
-                if score_val > 0:
-                    totals[axis].append(score_val * weight)
-                    weights[axis].append(weight)
+        _accumulate_scores(ws, totals, weights)
 
-    aggregate: dict[str, dict] = {}
+    return {
+        axis: {
+            "score": round(sum(totals[axis]) / sum(weights[axis]), 1),
+            "sample_size": len(totals[axis]),
+        }
+        for axis in SCORING_AXES
+        if totals[axis] and sum(weights[axis]) > 0
+    }
+
+
+def _accumulate_scores(
+    ws: WorkStream,
+    totals: dict[str, list[float]],
+    weights: dict[str, list[int]],
+) -> None:
+    weight = len(ws.sessions)
     for axis in SCORING_AXES:
-        if totals[axis]:
-            total_weight = sum(weights[axis])
-            avg = sum(totals[axis]) / total_weight if total_weight else 0
-            aggregate[axis] = {"score": round(avg, 1), "sample_size": len(totals[axis])}
+        score_data = ws.scores.get(axis)
+        if not isinstance(score_data, dict):
+            continue
+        score_val = score_data.get("score", 0)
+        if score_val > 0:
+            totals[axis].append(score_val * weight)
+            weights[axis].append(weight)
 
-    return aggregate
+
+def _format_duration(ws: WorkStream) -> str:
+    if not ws.start_time or not ws.end_time:
+        return "unknown"
+    hours = int((ws.end_time - ws.start_time).total_seconds() / 3600)
+    if hours >= 24:
+        return f"{hours // 24}d {hours % 24}h"
+    return f"{hours}h"
 
 
-def _build_scoring_prompt(ws: WorkStream, decisions_map: dict[str, list[dict]]) -> str:
-    duration = ""
-    if ws.start_time and ws.end_time:
-        delta = ws.end_time - ws.start_time
-        hours = int(delta.total_seconds() / 3600)
-        duration = f"{hours // 24}d {hours % 24}h" if hours >= 24 else f"{hours}h"
+def _collect_ws_decisions(ws: WorkStream, decisions_map: dict[str, list[dict]]) -> list[dict]:
+    result: list[dict] = []
+    for s in ws.sessions:
+        result.extend(decisions_map.get(s.id, []))
+    return result
 
+
+def _format_tool_summary(ws: WorkStream) -> str:
     tool_counts: dict[str, int] = {}
     for s in ws.sessions:
         for tc in s.tool_calls:
             tool_counts[tc.name] = tool_counts.get(tc.name, 0) + 1
-    tool_summary = ", ".join(f"{n}: {c}" for n, c in sorted(tool_counts.items()))
+    return ", ".join(f"{n}: {c}" for n, c in sorted(tool_counts.items()))
 
-    ws_decisions: list[dict] = []
-    for s in ws.sessions:
-        ws_decisions.extend(decisions_map.get(s.id, []))
-    correction_count = sum(1 for d in ws_decisions if d.get("type") == "correction")
-    steering_count = sum(1 for d in ws_decisions if d.get("type") == "steering")
 
+def _format_file_types(ws: WorkStream) -> str:
     file_exts: dict[str, int] = {}
     for f in ws.files_touched:
         ext = os.path.splitext(f)[1]
         if ext:
             file_exts[ext] = file_exts.get(ext, 0) + 1
-    file_types = ", ".join(
-        f"{ext}: {c}" for ext, c in sorted(file_exts.items(), key=lambda x: -x[1])[:8]
-    )
+    return ", ".join(f"{ext}: {c}" for ext, c in sorted(file_exts.items(), key=lambda x: -x[1])[:8])
+
+
+def _build_scoring_prompt(ws: WorkStream, decisions_map: dict[str, list[dict]]) -> str:
+    ws_decisions = _collect_ws_decisions(ws, decisions_map)
 
     return EPISODE_SCORING_PROMPT.format(
         title=ws.title,
         project=ws.project,
         branch=ws.branch or "(main)",
-        duration=duration or "unknown",
+        duration=_format_duration(ws),
         session_count=len(ws.sessions),
         commit_count=len(ws.commits),
         loc_added=ws.loc_added,
         loc_deleted=ws.loc_deleted,
         file_count=len(ws.files_touched),
-        tool_summary=tool_summary or "(none)",
+        tool_summary=_format_tool_summary(ws) or _NONE,
         decision_count=len(ws_decisions),
-        correction_count=correction_count,
-        steering_count=steering_count,
+        correction_count=sum(1 for d in ws_decisions if d.get("type") == "correction"),
+        steering_count=sum(1 for d in ws_decisions if d.get("type") == "steering"),
         summary=ws.summary or "(no summary)",
-        file_types=file_types or "(none)",
+        file_types=_format_file_types(ws) or _NONE,
         key_files=", ".join(ws.files_touched[:10]),
     )
 
 
-def _build_narrative_prompt(ws: WorkStream, decisions_map: dict[str, list[dict]]) -> str:
-    duration = ""
-    if ws.start_time and ws.end_time:
-        delta = ws.end_time - ws.start_time
-        hours = int(delta.total_seconds() / 3600)
-        duration = f"{hours // 24}d {hours % 24}h" if hours >= 24 else f"{hours}h"
+def _format_scores_text(ws: WorkStream) -> str:
+    if not ws.scores:
+        return ""
+    parts = [
+        f"{axis}: {data.get('score', '?')}/5"
+        for axis, data in ws.scores.items()
+        if isinstance(data, dict)
+    ]
+    return ", ".join(parts)
 
-    summaries = []
-    for s in ws.sessions:
-        if s.summary:
-            summaries.append(f"- {s.summary}")
+
+def _build_narrative_prompt(ws: WorkStream, decisions_map: dict[str, list[dict]]) -> str:
+    summaries = [f"- {s.summary}" for s in ws.sessions if s.summary]
     session_summaries = "\n".join(summaries[:10]) if summaries else "(no summaries)"
 
-    ws_decisions: list[dict] = []
-    for s in ws.sessions:
-        ws_decisions.extend(decisions_map.get(s.id, []))
+    ws_decisions = _collect_ws_decisions(ws, decisions_map)
     decisions_text = "\n".join(f"- [{d['type']}] {d['decision']}" for d in ws_decisions[:10])
-
-    scores_text = ""
-    if ws.scores:
-        parts = []
-        for axis, data in ws.scores.items():
-            if isinstance(data, dict):
-                parts.append(f"{axis}: {data.get('score', '?')}/5")
-        scores_text = ", ".join(parts)
 
     return NARRATIVE_PROMPT.format(
         title=ws.title,
         project=ws.project,
         branch=ws.branch or "(main)",
-        duration=duration or "unknown",
+        duration=_format_duration(ws),
         session_count=len(ws.sessions),
         commit_count=len(ws.commits),
         loc_added=ws.loc_added,
         loc_deleted=ws.loc_deleted,
         session_summaries=session_summaries,
         decisions_text=decisions_text or "(no decisions)",
-        scores_text=scores_text or "(not scored)",
+        scores_text=_format_scores_text(ws) or "(not scored)",
     )
 
 

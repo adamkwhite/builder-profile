@@ -36,15 +36,15 @@ def summarize_sessions(
     use_api: bool = False,
     model: str = "",
     concurrency: int = 5,
-) -> list[Session]:
+) -> None:
     to_summarize = [s for s in sessions if not s.summary and s.condensed_transcript]
     if not to_summarize:
-        return sessions
+        return
 
     total = len(to_summarize)
     completed = 0
 
-    def _do_one(session: Session) -> Session:
+    def _do_one(session: Session) -> None:
         nonlocal completed
         prompt = _build_session_prompt(session)
         effective_model = model or "haiku"
@@ -56,7 +56,7 @@ def summarize_sessions(
             print(
                 f"  [{completed}/{total}] (cached) {session.title or session.id}", file=sys.stderr
             )
-            return session
+            return
 
         result = _call_llm(prompt, use_api, model)
         if result:
@@ -65,7 +65,6 @@ def summarize_sessions(
 
         completed += 1
         print(f"  [{completed}/{total}] {session.title or session.id}", file=sys.stderr)
-        return session
 
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
         futures = {executor.submit(_do_one, s): s for s in to_summarize}
@@ -75,8 +74,6 @@ def summarize_sessions(
             except Exception as e:
                 session = futures[future]
                 print(f"  Warning: failed to summarize {session.id}: {e}", file=sys.stderr)
-
-    return sessions
 
 
 def _build_session_prompt(session: Session) -> str:

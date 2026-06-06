@@ -141,10 +141,14 @@ def _collect_numstat(
     if result.returncode != 0:
         return {}
 
+    return _parse_numstat_output(result.stdout)
+
+
+def _parse_numstat_output(output: str) -> dict[str, list[FileChange]]:
     numstat: dict[str, list[FileChange]] = {}
     current_sha = ""
 
-    for line in result.stdout.splitlines():
+    for line in output.splitlines():
         line = line.strip()
         if not line:
             continue
@@ -152,17 +156,24 @@ def _collect_numstat(
             current_sha = line.split(" ", 1)[1].strip()
             numstat[current_sha] = []
         elif current_sha and "\t" in line:
-            parts = line.split("\t", 2)
-            if len(parts) == 3:
-                added_str, deleted_str, path = parts
-                try:
-                    added = int(added_str) if added_str != "-" else 0
-                    deleted = int(deleted_str) if deleted_str != "-" else 0
-                except ValueError:
-                    added, deleted = 0, 0
-                numstat[current_sha].append(FileChange(path=path, added=added, deleted=deleted))
+            fc = _parse_numstat_line(line)
+            if fc:
+                numstat[current_sha].append(fc)
 
     return numstat
+
+
+def _parse_numstat_line(line: str) -> FileChange | None:
+    parts = line.split("\t", 2)
+    if len(parts) != 3:
+        return None
+    added_str, deleted_str, path = parts
+    try:
+        added = int(added_str) if added_str != "-" else 0
+        deleted = int(deleted_str) if deleted_str != "-" else 0
+    except ValueError:
+        added, deleted = 0, 0
+    return FileChange(path=path, added=added, deleted=deleted)
 
 
 def get_author_emails(repo_path: str) -> set[str]:

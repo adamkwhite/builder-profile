@@ -15,25 +15,25 @@ def correlate_sessions_to_commits(
     session_commit_map: dict[str, list[str]] = {}
 
     for session in sessions:
-        if not session.start_time or not session.end_time:
-            session_commit_map[session.id] = []
-            continue
-
-        window_start = session.start_time - WINDOW_BEFORE
-        window_end = session.end_time + WINDOW_AFTER
-        matched_shas = []
-
-        for commit in commits:
-            if not commit.is_mine:
-                continue
-            if not (window_start <= commit.date <= window_end):
-                continue
-            if session.branch and commit.sha or not session.branch:
-                matched_shas.append(commit.sha)
-
-        session_commit_map[session.id] = matched_shas
+        session_commit_map[session.id] = _match_session(session, commits)
 
     return session_commit_map
+
+
+def _match_session(session: Session, commits: list[Commit]) -> list[str]:
+    if not session.start_time or not session.end_time:
+        return []
+
+    window_start = session.start_time - WINDOW_BEFORE
+    window_end = session.end_time + WINDOW_AFTER
+
+    return [
+        c.sha
+        for c in commits
+        if c.is_mine
+        and window_start <= c.date <= window_end
+        and (session.branch and c.sha or not session.branch)
+    ]
 
 
 def compute_session_stats(

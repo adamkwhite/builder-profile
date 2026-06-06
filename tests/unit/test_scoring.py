@@ -298,9 +298,8 @@ class TestScoreWorkStreams:
         cache = _make_cache(cached_value=None)
         call_llm = MagicMock(return_value=self._make_llm_response())
 
-        result = score_work_streams([ws], {}, cache, call_llm)
+        score_work_streams([ws], {}, cache, call_llm)
 
-        assert result is not None
         assert ws.scores  # scores were applied
         call_llm.assert_called_once()
         cache.put.assert_called_once()
@@ -346,9 +345,9 @@ class TestScoreWorkStreams:
         cache = _make_cache(cached_value=None)
         call_llm = MagicMock(return_value=self._make_llm_response())
 
-        result = score_work_streams([ws_scored, ws_unscored], {}, cache, call_llm)
+        score_work_streams([ws_scored, ws_unscored], {}, cache, call_llm)
 
-        assert len(result) == 2
+        assert ws_unscored.scores  # unscored stream got scores
 
     def test_handles_llm_returning_none(self):
         ws = _make_stream(scores={})
@@ -365,9 +364,7 @@ class TestScoreWorkStreams:
         cache = _make_cache(cached_value=None)
         call_llm = MagicMock(side_effect=RuntimeError("LLM failed"))
 
-        # Should not raise
-        result = score_work_streams([ws], {}, cache, call_llm)
-        assert result is not None
+        score_work_streams([ws], {}, cache, call_llm)  # should not raise
 
     def test_passes_decisions_map_to_prompt(self):
         ws = _make_stream(scores={})
@@ -392,9 +389,8 @@ class TestGenerateNarratives:
         cache = _make_cache(cached_value=None)
         call_llm = MagicMock(return_value=self._make_narrative_response())
 
-        result = generate_narratives([ws], {}, cache, call_llm)
+        generate_narratives([ws], {}, cache, call_llm)
 
-        assert result is not None
         assert ws.narrative == "The developer implemented a robust solution."
         call_llm.assert_called_once()
 
@@ -441,9 +437,7 @@ class TestGenerateNarratives:
         cache = _make_cache(cached_value=None)
         call_llm = MagicMock(side_effect=RuntimeError("timeout"))
 
-        result = generate_narratives([ws], {}, cache, call_llm)
-
-        assert result is not None
+        generate_narratives([ws], {}, cache, call_llm)  # should not raise
 
     def test_returns_all_streams(self):
         ws1 = _make_stream(title="S1", narrative="done")
@@ -453,9 +447,9 @@ class TestGenerateNarratives:
         cache = _make_cache(cached_value=None)
         call_llm = MagicMock(return_value=self._make_narrative_response())
 
-        result = generate_narratives([ws1, ws2], {}, cache, call_llm)
+        generate_narratives([ws1, ws2], {}, cache, call_llm)
 
-        assert len(result) == 2
+        assert ws2.narrative  # ws2 got narrated
 
 
 class TestSynthesizeProfile:

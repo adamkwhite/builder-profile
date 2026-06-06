@@ -54,16 +54,32 @@ def discover_projects(
 
 
 def _resolve_real_path(project_dir: Path, jsonl_files: list[Path]) -> str:
-    index_file = project_dir / "sessions-index.json"
-    if index_file.exists():
-        try:
-            data = json.loads(index_file.read_text())
-            entries = data if isinstance(data, list) else data.get("entries", [])
-            if entries and "originalPath" in entries[0]:
-                return str(entries[0]["originalPath"])
-        except (json.JSONDecodeError, KeyError, IndexError):
-            pass
+    path = _path_from_index(project_dir)
+    if path:
+        return path
 
+    path = _path_from_jsonl(jsonl_files)
+    if path:
+        return path
+
+    return _decode_dir_name(project_dir.name)
+
+
+def _path_from_index(project_dir: Path) -> str:
+    index_file = project_dir / "sessions-index.json"
+    if not index_file.exists():
+        return ""
+    try:
+        data = json.loads(index_file.read_text())
+        entries = data if isinstance(data, list) else data.get("entries", [])
+        if entries and "originalPath" in entries[0]:
+            return str(entries[0]["originalPath"])
+    except (json.JSONDecodeError, KeyError, IndexError):
+        pass
+    return ""
+
+
+def _path_from_jsonl(jsonl_files: list[Path]) -> str:
     for jsonl_file in jsonl_files[:3]:
         try:
             with open(jsonl_file) as f:
@@ -78,8 +94,7 @@ def _resolve_real_path(project_dir: Path, jsonl_files: list[Path]) -> str:
                     break
         except (json.JSONDecodeError, OSError):
             continue
-
-    return _decode_dir_name(project_dir.name)
+    return ""
 
 
 def _decode_dir_name(name: str) -> str:
