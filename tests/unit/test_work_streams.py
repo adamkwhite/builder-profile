@@ -29,11 +29,10 @@ class TestGroupIntoWorkStreams:
                 "s3", "2026-05-01T10:00:00+00:00", "2026-05-01T11:00:00+00:00", "feature/billing"
             ),
         ]
-        interactive, automated = group_into_work_streams(sessions, [], {}, "test-project")
+        streams = group_into_work_streams(sessions, [], {}, "test-project")
 
-        assert len(interactive) == 2
-        assert len(automated) == 0
-        auth_stream = next(ws for ws in interactive if "Auth" in ws.title)
+        assert len(streams) == 2
+        auth_stream = next(ws for ws in streams if "Auth" in ws.title)
         assert len(auth_stream.sessions) == 2
 
     def test_splits_by_temporal_gap(self):
@@ -45,25 +44,56 @@ class TestGroupIntoWorkStreams:
                 "s2", "2026-05-05T10:00:00+00:00", "2026-05-05T11:00:00+00:00", "feature/x"
             ),
         ]
-        interactive, _ = group_into_work_streams(sessions, [], {}, "test-project")
+        streams = group_into_work_streams(sessions, [], {}, "test-project")
 
-        assert len(interactive) == 2
+        assert len(streams) == 2
 
-    def test_separates_automated(self):
+    def test_mixed_automated_merges_into_one_stream(self):
+        # Interactive and automated sessions on the same branch/timeframe merge together.
+        # The resulting stream is NOT fully automated (since not all sessions are automated).
         sessions = [
             _make_session(
-                "s1", "2026-05-01T10:00:00+00:00", "2026-05-01T11:00:00+00:00", automated=False
+                "s1",
+                "2026-05-01T10:00:00+00:00",
+                "2026-05-01T11:00:00+00:00",
+                branch="feature/x",
+                automated=False,
             ),
             _make_session(
-                "s2", "2026-05-01T12:00:00+00:00", "2026-05-01T13:00:00+00:00", automated=True
+                "s2",
+                "2026-05-01T12:00:00+00:00",
+                "2026-05-01T13:00:00+00:00",
+                branch="feature/x",
+                automated=True,
             ),
         ]
-        interactive, automated = group_into_work_streams(sessions, [], {}, "test-project")
+        streams = group_into_work_streams(sessions, [], {}, "test-project")
 
-        assert len(interactive) == 1
-        assert len(automated) == 1
-        assert not interactive[0].is_automated
-        assert automated[0].is_automated
+        assert len(streams) == 1
+        assert not streams[0].is_automated
+        assert len(streams[0].sessions) == 2
+
+    def test_all_automated_stream_flagged(self):
+        sessions = [
+            _make_session(
+                "s1",
+                "2026-05-01T10:00:00+00:00",
+                "2026-05-01T11:00:00+00:00",
+                branch="feature/x",
+                automated=True,
+            ),
+            _make_session(
+                "s2",
+                "2026-05-01T12:00:00+00:00",
+                "2026-05-01T13:00:00+00:00",
+                branch="feature/x",
+                automated=True,
+            ),
+        ]
+        streams = group_into_work_streams(sessions, [], {}, "test-project")
+
+        assert len(streams) == 1
+        assert streams[0].is_automated
 
     def test_groups_main_by_file_overlap(self):
         sessions = [
@@ -89,8 +119,8 @@ class TestGroupIntoWorkStreams:
                 files=["docs/readme.md"],
             ),
         ]
-        interactive, _ = group_into_work_streams(sessions, [], {}, "test-project")
+        streams = group_into_work_streams(sessions, [], {}, "test-project")
 
-        assert len(interactive) == 2
-        auth_stream = next(ws for ws in interactive if len(ws.sessions) == 2)
+        assert len(streams) == 2
+        auth_stream = next(ws for ws in streams if len(ws.sessions) == 2)
         assert {s.id for s in auth_stream.sessions} == {"s1", "s2"}

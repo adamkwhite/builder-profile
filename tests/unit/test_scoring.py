@@ -273,43 +273,50 @@ class TestBuildNarrativePrompt:
 
 class TestBuildSynthesisPrompt:
     def test_includes_stream_lines(self):
-        ws = _make_stream(title="Auth Feature")
-        prompt = _build_synthesis_prompt([ws], [], [_make_session()], {}, repo_count=2)
+        ws = _make_stream(title="Auth Feature", commits=_make_commits(3), loc_added=200)
+        prompt = _build_synthesis_prompt([ws], [_make_session()], {}, repo_count=2)
         assert "Auth Feature" in prompt
         assert "test-project" in prompt
 
     def test_includes_aggregate_scores(self):
         aggregate = {"velocity": {"score": 4.2}, "autonomy": {"score": 3.5}}
-        prompt = _build_synthesis_prompt([], [], [], aggregate, repo_count=1)
+        prompt = _build_synthesis_prompt([], [], aggregate, repo_count=1)
         assert "velocity" in prompt
         assert "4.2" in prompt
 
     def test_includes_stats(self):
         sessions = [_make_session()]
-        prompt = _build_synthesis_prompt([], [], sessions, {}, repo_count=3)
+        prompt = _build_synthesis_prompt([], sessions, {}, repo_count=3)
         assert "3" in prompt  # repo_count
 
     def test_handles_empty_inputs(self):
-        prompt = _build_synthesis_prompt([], [], [], {}, repo_count=0)
+        prompt = _build_synthesis_prompt([], [], {}, repo_count=0)
         assert "(none)" in prompt
         assert "(not scored)" in prompt
 
     def test_automated_sessions_counted(self):
         auto_ws = _make_stream(sessions=[_make_session("a1"), _make_session("a2")])
-        prompt = _build_synthesis_prompt([], [auto_ws], [], {}, repo_count=1)
+        auto_ws.is_automated = True
+        prompt = _build_synthesis_prompt([auto_ws], [], {}, repo_count=1)
         # 2 automated sessions
         assert "2" in prompt
 
     def test_caps_streams_at_twenty(self):
         streams = [
-            _make_stream(title=f"Stream {i}", sessions=[_make_session(f"s{i}")]) for i in range(25)
+            _make_stream(
+                title=f"Stream {i}",
+                sessions=[_make_session(f"s{i}")],
+                commits=_make_commits(3),
+                loc_added=200,
+            )
+            for i in range(25)
         ]
-        for ws in streams:
-            ws.id = f"ws{streams.index(ws)}"
-        prompt = _build_synthesis_prompt(streams, [], [], {}, repo_count=1)
-        # Only first 20 appear
-        assert "Stream 19" in prompt
-        assert "Stream 20" not in prompt
+        for i, ws in enumerate(streams):
+            ws.id = f"ws{i}"
+        prompt = _build_synthesis_prompt(streams, [], {}, repo_count=1)
+        # Only top 20 by weight appear
+        assert "Stream 0" in prompt
+        assert len([line for line in prompt.split("\n") if line.startswith("- Stream")]) == 20
 
 
 class TestScoreWorkStreams:
@@ -486,7 +493,7 @@ class TestSynthesizeProfile:
         cache = _make_cache(cached_value=None)
         call_llm = MagicMock(return_value=self._make_synthesis_response())
 
-        narrative, aggregate = synthesize_profile([ws], [], [_make_session()], 1, cache, call_llm)
+        narrative, aggregate = synthesize_profile([ws], [_make_session()], 1, cache, call_llm)
 
         assert narrative == "This developer shows strong engineering patterns."
         assert "velocity" in aggregate
@@ -497,7 +504,7 @@ class TestSynthesizeProfile:
         cache = _make_cache(cached_value=cached)
         call_llm = MagicMock()
 
-        narrative, _ = synthesize_profile([ws], [], [], 1, cache, call_llm)
+        narrative, _ = synthesize_profile([ws], [], 1, cache, call_llm)
 
         call_llm.assert_not_called()
         assert narrative == "This developer shows strong engineering patterns."
@@ -507,28 +514,27 @@ class TestSynthesizeProfile:
         cache = _make_cache(cached_value=None)
         call_llm = MagicMock(return_value=None)
 
-        narrative, _ = synthesize_profile([ws], [], [], 1, cache, call_llm)
+        narrative, _ = synthesize_profile([ws], [], 1, cache, call_llm)
 
         assert narrative == ""
 
-    def test_passes_automated_streams(self):
-        interactive = [_make_stream(title="Interactive")]
-        automated = [_make_stream(title="Automated")]
-        automated[0].id = "ws_auto"
+    def test_automated_sessions_counted_separately(self):
+        interactive = _make_stream(title="Interactive")
+        automated = _make_stream(title="Automated")
+        automated.is_automated = True
         cache = _make_cache(cached_value=None)
         call_llm = MagicMock(return_value=self._make_synthesis_response())
 
-        synthesize_profile(interactive, automated, [], 2, cache, call_llm)
+        synthesize_profile([interactive, automated], [], 2, cache, call_llm)
 
         prompt_used = call_llm.call_args[0][0]
-        # automated session count should appear in stats
         assert "1" in prompt_used  # 1 automated session
 
     def test_empty_streams_returns_empty_aggregate(self):
         cache = _make_cache(cached_value=None)
         call_llm = MagicMock(return_value=self._make_synthesis_response())
 
-        narrative, aggregate = synthesize_profile([], [], [], 0, cache, call_llm)
+        narrative, aggregate = synthesize_profile([], [], 0, cache, call_llm)
 
         assert aggregate == {}
 
@@ -537,7 +543,7 @@ class TestSynthesizeProfile:
         cache = _make_cache(cached_value=None)
         call_llm = MagicMock(return_value=self._make_synthesis_response())
 
-        synthesize_profile([ws], [], [], 1, cache, call_llm)
+        synthesize_profile([ws], [], 1, cache, call_llm)
 
         cache.put.assert_called_once()
 

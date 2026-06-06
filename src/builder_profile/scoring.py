@@ -191,18 +191,15 @@ def generate_narratives(
 
 
 def synthesize_profile(
-    interactive_streams: list[WorkStream],
-    automated_streams: list[WorkStream],
+    streams: list[WorkStream],
     all_sessions: list[Session],
     repo_count: int,
     cache: LLMCache,
     call_llm_fn,
 ) -> tuple[str, dict]:
-    aggregate = compute_aggregate_scores(interactive_streams)
+    aggregate = compute_aggregate_scores(streams)
 
-    prompt = _build_synthesis_prompt(
-        interactive_streams, automated_streams, all_sessions, aggregate, repo_count
-    )
+    prompt = _build_synthesis_prompt(streams, all_sessions, aggregate, repo_count)
     cache_key_model = "synthesis"
 
     cached = cache.get(prompt, cache_key_model, None)
@@ -372,14 +369,17 @@ def _build_narrative_prompt(ws: WorkStream, decisions_map: dict[str, list[dict]]
 
 
 def _build_synthesis_prompt(
-    interactive: list[WorkStream],
-    automated: list[WorkStream],
+    streams: list[WorkStream],
     sessions: list[Session],
     aggregate: dict,
     repo_count: int,
 ) -> str:
+    substantive = sorted(
+        [ws for ws in streams if _has_substantive_work(ws)],
+        key=lambda ws: -(len(ws.commits) + ws.loc_added / 100),
+    )
     stream_lines = []
-    for ws in interactive[:20]:
+    for ws in substantive[:20]:
         stream_lines.append(
             f"- {ws.title} ({ws.project}): {len(ws.sessions)} sessions, "
             f"{len(ws.commits)} commits, +{ws.loc_added}/-{ws.loc_deleted} LOC"
@@ -390,10 +390,10 @@ def _build_synthesis_prompt(
         if isinstance(data, dict):
             scores_parts.append(f"{axis}: {data.get('score', '?')}/5")
 
-    auto_count = sum(len(ws.sessions) for ws in automated)
-    total_commits = sum(len(ws.commits) for ws in interactive + automated)
-    total_loc_added = sum(ws.loc_added for ws in interactive + automated)
-    total_loc_deleted = sum(ws.loc_deleted for ws in interactive + automated)
+    auto_count = sum(len(ws.sessions) for ws in streams if ws.is_automated)
+    total_commits = sum(len(ws.commits) for ws in streams)
+    total_loc_added = sum(ws.loc_added for ws in streams)
+    total_loc_deleted = sum(ws.loc_deleted for ws in streams)
 
     return SYNTHESIS_PROMPT.format(
         streams_text="\n".join(stream_lines) or "(none)",
