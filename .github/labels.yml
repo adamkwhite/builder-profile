@@ -1,0 +1,119 @@
+# Standard GitHub Labels for All Repositories
+# This file defines the standard label set used across all projects
+# To apply these labels to a repository, use: ~/Code/Devops/scripts/sync-github-labels.sh
+
+# DEPENDENCIES
+- name: dependencies
+  color: "0366d6"
+  description: "Pull requests that update a dependency file"
+
+# TYPE LABELS - What kind of change is this?
+- name: bug
+  color: "d73a4a"
+  description: "Something isn't working"
+
+- name: enhancement
+  color: "a2eeef"
+  description: "New feature or request"
+
+- name: feature
+  color: "1d76db"
+  description: "New functionality being added"
+
+- name: documentation
+  color: "0075ca"
+  description: "Improvements or additions to documentation"
+
+- name: chore
+  color: "fef2c0"
+  description: "Maintenance tasks (build, CI/CD, deps, cleanup)"
+
+# PRIORITY LABELS - How urgent is this?
+- name: priority-high
+  color: "b60205"
+  description: "Critical issue requiring immediate attention"
+
+- name: priority-medium
+  color: "fbca04"
+  description: "Important but not urgent"
+
+- name: priority-low
+  color: "0e8a16"
+  description: "Nice to have, low priority"
+
+# STATUS LABELS - What's the current state?
+- name: status-blocked
+  color: "d93f0b"
+  description: "Progress blocked by external factor"
+
+- name: status-in-progress
+  color: "0e8a16"
+  description: "Work is actively being done"
+
+- name: status-review-needed
+  color: "fbca04"
+  description: "Needs review or decision"
+
+# AREA LABELS - Which part of the codebase?
+- name: area-frontend
+  color: "c5def5"
+  description: "Frontend / UI changes"
+
+- name: area-backend
+  color: "c5def5"
+  description: "Backend / API changes"
+
+- name: area-infrastructure
+  color: "c5def5"
+  description: "Infrastructure / DevOps changes"
+
+- name: area-testing
+  color: "c5def5"
+  description: "Testing infrastructure or test cases"
+
+# SPECIAL LABELS - GitHub-recognized and custom
+- name: good-first-issue
+  color: "7057ff"
+  description: "Good for newcomers"
+
+- name: help-wanted
+  color: "008672"
+  description: "Extra attention is needed"
+
+- name: duplicate
+  color: "cfd3d7"
+  description: "This issue or pull request already exists"
+
+- name: wontfix
+  color: "ffffff"
+  description: "This will not be worked on"
+
+- name: invalid
+  color: "e4e669"
+  description: "This doesn't seem right"
+
+- name: question
+  color: "d876e3"
+  description: "Further information is requested"
+
+# WORKFLOW LABELS - CI/CD and automation
+- name: breaking-change
+  color: "d73a4a"
+  description: "Introduces breaking changes to API or behavior"
+
+- name: needs-testing
+  color: "fbca04"
+  description: "Requires manual testing before merge"
+
+- name: security
+  color: "d73a4a"
+  description: "Security-related issue or fix"
+
+# PR-SPECIFIC LABELS
+- name: pr-review-feedback
+  color: "0e8a16"
+  description: "Issues created from PR review comments"
+
+- name: ci-failure
+  color: "d73a4a"
+  description: "Issues created from failing CI/CD checks"

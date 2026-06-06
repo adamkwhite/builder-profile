@@ -1,0 +1,246 @@
+# ==============================================================================
+# Kafka Food Processing Pipeline - Git Ignore File
+# ==============================================================================
+#
+# This file tells Git which files/directories to ignore (not track in version control)
+#
+# WHY IGNORE FILES?
+# 1. Security: Don't commit secrets (.env, credentials)
+# 2. Size: Don't commit large binaries or generated files
+# 3. Noise: Don't commit IDE settings, OS files
+# 4. Reproducibility: Build artifacts should be regenerated, not committed
+#
+
+# ==============================================================================
+# PYTHON
+# ==============================================================================
+
+# Virtual Environments
+# - Never commit venv (others will create their own)
+# - Different OS/Python versions = different venv contents
+kafka-venv/
+venv/
+env/
+ENV/
+.venv
+
+# Byte-compiled / optimized / DLL files
+# - Python creates .pyc files when importing modules
+# - These are OS/Python version specific
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+# - Generated when building Python packages (pip install -e .)
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+# - Test artifacts and coverage data
+# - Each developer regenerates these locally
+htmlcov/
+test-report.html
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.hypothesis/
+.pytest_cache/
+
+# ==============================================================================
+# ENVIRONMENT VARIABLES & SECRETS
+# ==============================================================================
+
+# Environment Files
+# ⚠️  CRITICAL: Never commit .env (contains passwords, API keys)
+# - .env.example is committed (template without secrets)
+# - .env is local only (contains actual secrets)
+.env
+.env.local
+.env.*.local
+
+# AWS credentials (if using AWS CLI)
+.aws/credentials
+
+# ==============================================================================
+# CLAUDE CODE
+# ==============================================================================
+
+# Local settings (machine-specific tool permissions)
+.claude/settings.local.json
+
+# ==============================================================================
+# IDE / EDITORS
+# ==============================================================================
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ==============================================================================
+# OPERATING SYSTEM
+# ==============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# ==============================================================================
+# DOCKER & KAFKA
+# ==============================================================================
+
+# Docker volumes (data persistence)
+# - PostgreSQL data stored here
+# - Don't commit database files (can be huge)
+postgres-data/
+
+# Kafka data directories (if running locally without Docker)
+kafka-logs/
+zookeeper-data/
+
+# Docker compose override files (local customizations)
+docker-compose.override.yml
+
+# ==============================================================================
+# JUPYTER NOTEBOOKS
+# ==============================================================================
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# IPython
+profile_default/
+ipython_config.py
+
+# ==============================================================================
+# LOGS & TEMPORARY FILES
+# ==============================================================================
+
+# Log files
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# ==============================================================================
+# PROJECT SPECIFIC
+# ==============================================================================
+
+# Archived troubleshooting screenshots
+docs/screenshots/archive/
+
+# Testcontainers (creates temp files for integration tests)
+.testcontainers/
+
+# MyPy type checking cache
+.mypy_cache/
+.dmypy.json
+dmyp.json
+
+# Ruff cache
+.ruff_cache/
+
+# ==============================================================================
+# CLAUDE CODE / WSL ARTIFACTS
+# ==============================================================================
+
+# Per-session bot state — never useful to commit
+**/scheduled_tasks.lock
+
+# WSL/Windows metadata files
+*:Zone.Identifier
+
+# ==============================================================================
+# SONARCLOUD
+# ==============================================================================
+
+# SonarCloud scanner output
+.scannerwork/
+
+# SonarCloud reports (generated by tests)
+test-results.xml
+
+# ==============================================================================
+# DOCUMENTATION BUILD
+# ==============================================================================
+
+# Sphinx documentation
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# ==============================================================================
+# IMPORTANT: FILES TO COMMIT
+# ==============================================================================
+# The following files SHOULD be committed (ensure they're not ignored):
+# ✅ .env.example (template for environment variables)
+# ✅ requirements.txt (Python dependencies)
+# ✅ docker-compose.yml (infrastructure definition)
+# ✅ src/ (all source code)
+# ✅ tests/ (all test code)
+# ✅ docs/ (documentation)
+# ✅ README.md (project documentation)
+# ✅ .gitignore (this file!)

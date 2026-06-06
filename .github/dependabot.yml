@@ -1,0 +1,78 @@
+# Dependabot configuration for automated dependency updates
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # Monitor Python dependencies in requirements.txt
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Toronto"
+
+    # Limit number of open PRs to avoid noise
+    open-pull-requests-limit: 5
+
+    # Labels to add to PRs
+    labels:
+      - "dependencies"
+      - "enhancement"
+
+    # Commit message configuration
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+
+    # Group related dependencies together
+    groups:
+      # Group all pytest-related packages
+      pytest:
+        patterns:
+          - "pytest*"
+
+      # Group development dependencies (minor and patch updates only)
+      development:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+
+      # Group security-related packages
+      security:
+        patterns:
+          - "bandit*"
+          - "safety"
+
+    # Ignore specific dependencies or versions
+    # Uncomment and customize as needed:
+    # ignore:
+    #   - dependency-name: "package-name"
+    #     versions: ["1.x"]
+
+  # Monitor GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Toronto"
+
+    open-pull-requests-limit: 3
+
+    labels:
+      - "dependencies"
+      - "infrastructure"
+
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+    # Group all GitHub Actions updates together
+    groups:
+      github-actions:
+        patterns:
+          - "*"

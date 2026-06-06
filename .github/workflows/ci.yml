@@ -1,0 +1,182 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['*.md', 'docs/**', 'LICENSE', '.gitignore', '.github/**']
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, ready_for_review]
+    paths-ignore: ['*.md', 'docs/**', 'LICENSE', '.gitignore', '.github/**']
+  workflow_dispatch:  # Allow manual triggers
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Pre-commit Checks (Ruff, mypy, formatting)
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false || github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install pre-commit
+        run: pip install pre-commit
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-
+
+      - name: Run pre-commit checks
+        run: pre-commit run --all-files --show-diff-on-failure
+
+  test:
+    name: Test with pytest
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false || github.event_name != 'pull_request'
+    strategy:
+      matrix:
+        python-version: ['3.13']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest>=8.0.0 pytest-cov>=6.0.0 pytest-html>=4.1.0 pytest-mock>=3.12.0
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          # Install package in editable mode if pyproject.toml exists
+          if [ -f pyproject.toml ]; then
+            pip install -e .
+          fi
+
+      - name: Run tests with coverage
+        run: |
+          # Check if tests exist
+          if find tests/ -name "test_*.py" -type f | grep -q .; then
+            pytest tests/ \
+              --cov=src \
+              --cov-report=term-missing \
+              --cov-report=xml \
+              --cov-report=html \
+              --html=test-report.html \
+              --self-contained-html \
+              -v
+          else
+            echo "No test files found, skipping pytest"
+            echo "This is expected for a template repository"
+          fi
+
+      # Hand coverage.xml to the downstream `sonarcloud` job so it does not
+      # re-run the entire pytest suite (saves ~6 min/PR).
+      - name: Upload coverage.xml for SonarCloud
+        if: hashFiles('coverage.xml') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          retention-days: 1
+
+      - name: Upload coverage to artifacts
+        if: hashFiles('htmlcov/**') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 30
+
+      - name: Upload test report to artifacts
+        if: hashFiles('test-report.html') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-report
+          path: test-report.html
+          retention-days: 30
+
+      - name: Coverage summary
+        if: hashFiles('.coverage') != ''
+        run: |
+          echo "## Test Coverage Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          coverage report >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload coverage to Codecov
+        if: hashFiles('coverage.xml') != ''
+        uses: codecov/codecov-action@v6
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # Consumes coverage.xml from the `test` job above instead of re-running
+  # pytest. Skipped on draft PRs and Dependabot (no SONAR_TOKEN access).
+  sonarcloud:
+    name: SonarCloud Analysis
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.actor != 'dependabot[bot]' && (github.event.pull_request.draft == false || github.event_name != 'pull_request')
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # SonarCloud blame analysis needs full history
+
+      - name: Download coverage.xml from test job
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage-xml
+          path: .
+        continue-on-error: true  # No artifact when tests/ is empty (template repo)
+
+      - name: SonarCloud Scan
+        if: ${{ env.SONAR_TOKEN != '' }}
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}
+            -Dsonar.organization=${{ github.repository_owner }}
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+
+      - name: SonarCloud Quality Gate check
+        if: ${{ env.SONAR_TOKEN != '' }}
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        continue-on-error: true

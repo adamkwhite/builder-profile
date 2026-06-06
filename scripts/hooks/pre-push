@@ -1,0 +1,24 @@
+#!/bin/bash
+# Pre-push hook to prevent direct pushes to main branch
+# This enforces the feature branch workflow documented in CLAUDE.md
+
+current_branch=$(git branch --show-current)
+
+if [ "$current_branch" = "main" ]; then
+    echo ""
+    echo "❌ ERROR: Direct pushes to 'main' branch are blocked!"
+    echo ""
+    echo "This repository requires all changes to go through pull requests."
+    echo ""
+    echo "To fix this:"
+    echo "  1. Create a feature branch: git checkout -b feature/your-description"
+    echo "  2. Cherry-pick your commits: git cherry-pick <commit-hash>"
+    echo "  3. Push the feature branch: git push -u origin feature/your-description"
+    echo "  4. Create a PR: gh pr create"
+    echo ""
+    echo "See CLAUDE.md for the complete workflow."
+    echo ""
+    exit 1
+fi
+
+exit 0
