@@ -4,7 +4,7 @@
 
 **Type**: CLI tool
 **Purpose**: Local-first builder profile generator from Claude Code session transcripts
-**Status**: Phase 1 MVP
+**Status**: Phase 2+3 (scoring, narratives, HTML, TUI)
 
 ## Essential Commands
 
@@ -34,5 +34,8 @@ ruff format src/ tests/
 - `src/builder_profile/work_streams.py` - Group sessions into multi-day work streams
 - `src/builder_profile/llm.py` - Dual-mode LLM caller (claude -p or Anthropic API)
 - `src/builder_profile/cache.py` - SQLite LLM result cache
-- `src/builder_profile/report.py` - Markdown/PDF/JSON report generation
+- `src/builder_profile/decisions.py` - Extract steering decisions from transcripts
+- `src/builder_profile/scoring.py` - 8-axis scoring, narrative generation, profile synthesis
+- `src/builder_profile/report.py` - Markdown/PDF/JSON report generation with scoring tables
+- `src/builder_profile/html_report.py` - Self-contained HTML report with inline CSS
 - `src/builder_profile/models.py` - Dataclasses for all domain objects

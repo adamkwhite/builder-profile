@@ -123,6 +123,64 @@ def interactive_picker(manifests: list[ProjectManifest]) -> list[ProjectManifest
         print("No projects with sessions found.", file=sys.stderr)
         return []
 
+    try:
+        return _rich_picker(viable)
+    except ImportError:
+        return _plain_picker(viable)
+
+
+def _rich_picker(viable: list[ProjectManifest]) -> list[ProjectManifest]:
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    table = Table(title="Discovered Projects", show_lines=False)
+    table.add_column("#", justify="right", style="bold", width=4)
+    table.add_column("Project", min_width=20)
+    table.add_column("Sessions", justify="right")
+    table.add_column("Size", justify="right")
+    table.add_column("Path", style="dim", overflow="fold")
+
+    for i, m in enumerate(viable, 1):
+        name = _display_name(m)
+        table.add_row(
+            str(i),
+            f"[cyan]{name}[/cyan]",
+            str(m.session_count),
+            f"{m.data_size_mb:.1f}MB",
+            m.real_path or "",
+        )
+
+    console.print()
+    console.print(table)
+    console.print("\n  [bold]a[/bold]) All projects\n")
+
+    try:
+        choice = console.input(
+            "[bold]Select projects[/bold] (comma-separated numbers, or 'a' for all): "
+        ).strip()
+    except (EOFError, KeyboardInterrupt):
+        console.print("\nCancelled.", style="dim")
+        return []
+
+    if choice.lower() == "a":
+        return viable
+
+    selected = []
+    for part in choice.split(","):
+        part = part.strip()
+        try:
+            idx = int(part) - 1
+            if 0 <= idx < len(viable):
+                selected.append(viable[idx])
+        except ValueError:
+            continue
+
+    return selected
+
+
+def _plain_picker(viable: list[ProjectManifest]) -> list[ProjectManifest]:
     print("\nDiscovered projects:\n")
     for i, m in enumerate(viable, 1):
         name = _display_name(m)

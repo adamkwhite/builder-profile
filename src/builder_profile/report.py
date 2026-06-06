@@ -32,6 +32,8 @@ def build_profile_data(
     interactive_streams: list[WorkStream],
     automated_streams: list[WorkStream],
     all_sessions: list[Session],
+    aggregate_scores: dict | None = None,
+    profile_narrative: str = "",
 ) -> ProfileData:
     all_times = []
     for s in all_sessions:
@@ -47,11 +49,13 @@ def build_profile_data(
 
     return ProfileData(
         generated_at=datetime.now(timezone.utc).isoformat(),
-        tool_version="0.1.0",
+        tool_version="0.2.0",
         date_range={"from": date_from, "to": date_to},
         repos=repos,
         work_streams=interactive_streams,
         automated_streams=automated_streams,
+        aggregate_scores=aggregate_scores or {},
+        profile_narrative=profile_narrative,
         velocity_timeline=velocity,
     )
 
@@ -126,6 +130,20 @@ def _write_markdown(profile: ProfileData, path: Path):
         lines.append(profile.profile_narrative)
         lines.append("")
 
+    if profile.aggregate_scores:
+        lines.append("## Scoring Summary")
+        lines.append("")
+        lines.append("| Axis | Score | Justification |")
+        lines.append("|------|-------|---------------|")
+        for axis, data in profile.aggregate_scores.items():
+            if isinstance(data, dict):
+                label = axis.replace("_", " ").title()
+                score = data.get("score", "?")
+                justification = data.get("justification", "")
+                bar = _score_bar(score)
+                lines.append(f"| {label} | {bar} {score}/5 | {justification} |")
+        lines.append("")
+
     lines.append("## Projects")
     lines.append("")
     lines.append("| Project | Sessions | Commits | LOC +/- | Top Files |")
@@ -153,9 +171,22 @@ def _write_markdown(profile: ProfileData, path: Path):
                 f"+{ws.loc_added}/-{ws.loc_deleted} LOC"
             )
             lines.append("")
-            if ws.summary:
+            if ws.narrative:
+                lines.append(ws.narrative)
+                lines.append("")
+            elif ws.summary:
                 lines.append(ws.summary)
                 lines.append("")
+            if ws.scores:
+                score_parts = []
+                for axis, data in ws.scores.items():
+                    if isinstance(data, dict):
+                        score_parts.append(
+                            f"{axis.replace('_', ' ').title()}: {data.get('score', '?')}/5"
+                        )
+                if score_parts:
+                    lines.append(f"**Scores:** {', '.join(score_parts)}")
+                    lines.append("")
             if ws.decisions:
                 lines.append("**Key decisions:**")
                 for d in ws.decisions[:5]:
@@ -184,12 +215,7 @@ def _write_markdown(profile: ProfileData, path: Path):
     if profile.velocity_timeline:
         lines.append("## Velocity")
         lines.append("")
-        lines.append("| Week | Sessions | Commits | LOC |")
-        lines.append("|------|----------|---------|-----|")
-        for week in profile.velocity_timeline[-12:]:
-            lines.append(
-                f"| {week['week']} | {week['sessions']} | {week['commits']} | {week['loc']} |"
-            )
+        lines.extend(_ascii_velocity_chart(profile.velocity_timeline[-16:]))
         lines.append("")
 
     lines.append("---")
@@ -227,3 +253,38 @@ def _render_pdf(md_path: Path, pdf_path: Path) -> bool:
     except subprocess.TimeoutExpired:
         print("  Warning: pandoc timed out", file=sys.stderr)
         return False
+
+
+def _score_bar(score) -> str:
+    try:
+        n = int(float(score))
+    except (ValueError, TypeError):
+        return ""
+    filled = min(n, 5)
+    return "█" * filled + "░" * (5 - filled)
+
+
+def _ascii_velocity_chart(timeline: list[dict]) -> list[str]:
+    if not timeline:
+        return []
+
+    max_sessions = max((w.get("sessions", 0) for w in timeline), default=1) or 1
+    max_commits = max((w.get("commits", 0) for w in timeline), default=1) or 1
+    bar_width = 30
+
+    lines = ["```"]
+    lines.append(f"{'Week':<10} {'Sessions':<{bar_width + 6}} {'Commits'}")
+    lines.append(f"{'----':<10} {'--------':<{bar_width + 6}} {'-------'}")
+
+    for w in timeline:
+        week = w.get("week", "")
+        sess = w.get("sessions", 0)
+        commits = w.get("commits", 0)
+        sess_bars = int(sess / max_sessions * bar_width)
+        commit_bars = int(commits / max_commits * bar_width)
+        sess_bar = "█" * sess_bars + " " * (bar_width - sess_bars)
+        commit_bar = "█" * commit_bars
+        lines.append(f"{week:<10} {sess_bar} {sess:>3}  {commit_bar} {commits}")
+
+    lines.append("```")
+    return lines
