@@ -1,0 +1,59 @@
+from __future__ import annotations
+
+from datetime import timedelta
+
+from builder_profile.models import Commit, Session
+
+WINDOW_BEFORE = timedelta(minutes=5)
+WINDOW_AFTER = timedelta(minutes=30)
+
+
+def correlate_sessions_to_commits(
+    sessions: list[Session],
+    commits: list[Commit],
+) -> dict[str, list[str]]:
+    session_commit_map: dict[str, list[str]] = {}
+
+    for session in sessions:
+        if not session.start_time or not session.end_time:
+            session_commit_map[session.id] = []
+            continue
+
+        window_start = session.start_time - WINDOW_BEFORE
+        window_end = session.end_time + WINDOW_AFTER
+        matched_shas = []
+
+        for commit in commits:
+            if not commit.is_mine:
+                continue
+            if not (window_start <= commit.date <= window_end):
+                continue
+            if session.branch and commit.sha or not session.branch:
+                matched_shas.append(commit.sha)
+
+        session_commit_map[session.id] = matched_shas
+
+    return session_commit_map
+
+
+def compute_session_stats(
+    session: Session,
+    commits: list[Commit],
+    session_commit_map: dict[str, list[str]],
+) -> dict:
+    matched_shas = set(session_commit_map.get(session.id, []))
+    matched_commits = [c for c in commits if c.sha in matched_shas]
+
+    loc_added = sum(fc.added for c in matched_commits for fc in c.files)
+    loc_deleted = sum(fc.deleted for c in matched_commits for fc in c.files)
+    files_changed = set()
+    for c in matched_commits:
+        for fc in c.files:
+            files_changed.add(fc.path)
+
+    return {
+        "commit_count": len(matched_commits),
+        "loc_added": loc_added,
+        "loc_deleted": loc_deleted,
+        "files_changed": len(files_changed),
+    }
