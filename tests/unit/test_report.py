@@ -6,18 +6,18 @@ from builder_profile.report import _ascii_velocity_chart, _score_bar, build_prof
 
 class TestScoreBar:
     def test_full_score(self):
-        assert _score_bar(5) == "█████"
+        assert _score_bar(5) == "#####"
 
     def test_zero_score(self):
-        assert _score_bar(0) == "░░░░░"
+        assert _score_bar(0) == "-----"
 
     def test_mid_score(self):
         bar = _score_bar(3)
-        assert bar == "███░░"
+        assert bar == "###--"
 
     def test_float_score(self):
         bar = _score_bar(3.7)
-        assert bar == "███░░"
+        assert bar == "###--"
 
     def test_invalid_score(self):
         assert _score_bar("bad") == ""
