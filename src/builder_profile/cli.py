@@ -114,7 +114,7 @@ def _check_deps(args: argparse.Namespace):
             print(f"  - {m}", file=sys.stderr)
         sys.exit(1)
 
-    if not shutil.which("pandoc") or not shutil.which("pdflatex"):
+    if not shutil.which("pandoc") or not shutil.which("xelatex"):
         print(
             "Note: pandoc/pdflatex not found. PDF output will be skipped (Markdown + JSON still generated).",
             file=sys.stderr,

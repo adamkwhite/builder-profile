@@ -232,7 +232,7 @@ def _render_pdf(md_path: Path, pdf_path: Path) -> bool:
                 str(md_path),
                 "-o",
                 str(pdf_path),
-                "--pdf-engine=pdflatex",
+                "--pdf-engine=xelatex",
             ],
             capture_output=True,
             text=True,
@@ -261,7 +261,7 @@ def _score_bar(score) -> str:
     except (ValueError, TypeError):
         return ""
     filled = min(n, 5)
-    return "█" * filled + "░" * (5 - filled)
+    return "#" * filled + "-" * (5 - filled)
 
 
 def _ascii_velocity_chart(timeline: list[dict]) -> list[str]:
@@ -282,8 +282,8 @@ def _ascii_velocity_chart(timeline: list[dict]) -> list[str]:
         commits = w.get("commits", 0)
         sess_bars = int(sess / max_sessions * bar_width)
         commit_bars = int(commits / max_commits * bar_width)
-        sess_bar = "█" * sess_bars + " " * (bar_width - sess_bars)
-        commit_bar = "█" * commit_bars
+        sess_bar = "#" * sess_bars + " " * (bar_width - sess_bars)
+        commit_bar = "#" * commit_bars
         lines.append(f"{week:<10} {sess_bar} {sess:>3}  {commit_bar} {commits}")
 
     lines.append("```")
