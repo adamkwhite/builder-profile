@@ -138,10 +138,8 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  # Consumes coverage.xml from the `test` job above instead of re-running
-  # pytest. Skipped on draft PRs and Dependabot (no SONAR_TOKEN access).
-  sonarcloud:
-    name: SonarCloud Analysis
+  sonarqube:
+    name: Security Analysis
     runs-on: ubuntu-latest
     needs: test
     if: github.actor != 'dependabot[bot]' && (github.event.pull_request.draft == false || github.event_name != 'pull_request')
@@ -152,30 +150,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # SonarCloud blame analysis needs full history
+          fetch-depth: 0
 
       - name: Download coverage.xml from test job
         uses: actions/download-artifact@v8
         with:
           name: coverage-xml
           path: .
-        continue-on-error: true  # No artifact when tests/ is empty (template repo)
+        continue-on-error: true
 
-      - name: SonarCloud Scan
-        if: ${{ env.SONAR_TOKEN != '' }}
-        uses: SonarSource/sonarcloud-github-action@master
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v6
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}
-            -Dsonar.organization=${{ github.repository_owner }}
-            -Dsonar.python.coverage.reportPaths=coverage.xml
 
-      - name: SonarCloud Quality Gate check
-        if: ${{ env.SONAR_TOKEN != '' }}
-        uses: sonarsource/sonarqube-quality-gate-action@master
+      - name: SonarQube Quality Gate check
+        uses: SonarSource/sonarqube-quality-gate-action@v1
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
