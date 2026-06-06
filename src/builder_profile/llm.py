@@ -131,13 +131,16 @@ def make_llm_caller(use_api: bool, model: str):
 def _call_llm(prompt: str, use_api: bool, model: str) -> str:
     if use_api:
         return _call_api(prompt, model)
-    return _call_claude_cli(prompt)
+    return _call_claude_cli(prompt, model)
 
 
-def _call_claude_cli(prompt: str) -> str:
+def _call_claude_cli(prompt: str, model: str = "") -> str:
     try:
+        cmd = ["claude", "-p", prompt, "--output-format", "text"]
+        if model:
+            cmd.extend(["--model", model])
         result = subprocess.run(
-            ["claude", "-p", prompt, "--output-format", "text"],
+            cmd,
             capture_output=True,
             text=True,
             timeout=120,
@@ -157,6 +160,13 @@ def _call_claude_cli(prompt: str) -> str:
         return ""
 
 
+MODEL_ALIASES = {
+    "haiku": "claude-haiku-4-5-20251001",
+    "sonnet": "claude-sonnet-4-6-20250514",
+    "opus": "claude-opus-4-6-20250610",
+}
+
+
 def _call_api(prompt: str, model: str) -> str:
     try:
         import anthropic
@@ -167,7 +177,7 @@ def _call_api(prompt: str, model: str) -> str:
         )
         return ""
 
-    effective_model = model or "claude-haiku-4-5-20251001"
+    effective_model = MODEL_ALIASES.get(model, model) if model else "claude-haiku-4-5-20251001"
     try:
         client = anthropic.Anthropic()
         message = client.messages.create(

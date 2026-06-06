@@ -51,7 +51,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--model",
         default="",
-        help="Model to use for LLM analysis (default: haiku for claude -p, claude-haiku-4-5-20251001 for API)",
+        help="Override model for all LLM tasks (default: haiku for scoring/narratives, sonnet for synthesis)",
     )
     parser.add_argument(
         "--concurrency",
@@ -211,7 +211,10 @@ def _run_llm_pipeline(
     )
 
     concurrency = args.concurrency or (10 if args.api_mode else 5)
-    call_llm = make_llm_caller(args.api_mode, args.model)
+    scoring_model = args.model or "haiku"
+    synthesis_model = args.model or "sonnet"
+    call_llm_scoring = make_llm_caller(args.api_mode, scoring_model)
+    call_llm_synthesis = make_llm_caller(args.api_mode, synthesis_model)
 
     print("\nExtracting decisions...", file=sys.stderr)
     all_decisions = extract_all_decisions(all_sessions)
@@ -221,20 +224,22 @@ def _run_llm_pipeline(
         file=sys.stderr,
     )
 
-    print("Scoring work streams...", file=sys.stderr)
-    score_work_streams(all_interactive_streams, all_decisions, cache, call_llm, concurrency)
+    print(f"Scoring work streams (model: {scoring_model})...", file=sys.stderr)
+    score_work_streams(all_interactive_streams, all_decisions, cache, call_llm_scoring, concurrency)
 
-    print("Generating narratives...", file=sys.stderr)
-    generate_narratives(all_interactive_streams, all_decisions, cache, call_llm, concurrency)
+    print(f"Generating narratives (model: {scoring_model})...", file=sys.stderr)
+    generate_narratives(
+        all_interactive_streams, all_decisions, cache, call_llm_scoring, concurrency
+    )
 
-    print("Synthesizing profile...", file=sys.stderr)
+    print(f"Synthesizing profile (model: {synthesis_model})...", file=sys.stderr)
     return synthesize_profile(
         all_interactive_streams,
         all_automated_streams,
         all_sessions,
         repo_count,
         cache,
-        call_llm,
+        call_llm_synthesis,
     )
 
 
