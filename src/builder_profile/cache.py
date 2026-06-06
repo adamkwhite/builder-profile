@@ -51,7 +51,7 @@ class LLMCache:
         if source_mtime is not None and row[1] is not None and source_mtime > row[1]:
             return None
 
-        return row[0]
+        return str(row[0])
 
     def put(self, prompt: str, model: str, result: str, source_mtime: float | None = None):
         conn = self._get_conn()

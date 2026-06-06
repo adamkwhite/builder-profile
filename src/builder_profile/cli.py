@@ -73,6 +73,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--claude-dir",
         help="Path to Claude projects directory (default: ~/.claude/projects)",
     )
+    parser.add_argument(
+        "--format",
+        choices=["pdf", "html", "all"],
+        default="pdf",
+        dest="output_format",
+        help="Output format: pdf (default), html, or all",
+    )
     return parser.parse_args(argv)
 
 
@@ -221,7 +228,9 @@ def main(argv: list[str] | None = None):
                 "loc_added": loc_added,
                 "loc_deleted": loc_deleted,
                 "top_files": top_files,
-                "tech_stack": sorted(file_ext_counts, key=file_ext_counts.get, reverse=True)[:5],
+                "tech_stack": sorted(
+                    file_ext_counts, key=lambda e: file_ext_counts[e], reverse=True
+                )[:5],
             }
         )
 
@@ -233,13 +242,63 @@ def main(argv: list[str] | None = None):
         print("\nNo sessions to report on.", file=sys.stderr)
         sys.exit(1)
 
+    all_decisions: dict[str, list[dict]] = {}
+    aggregate_scores: dict = {}
+    profile_narrative = ""
+
+    if not args.no_llm:
+        from builder_profile.decisions import extract_all_decisions
+        from builder_profile.llm import make_llm_caller
+        from builder_profile.scoring import (
+            generate_narratives,
+            score_work_streams,
+            synthesize_profile,
+        )
+
+        concurrency = args.concurrency or (10 if args.api_mode else 5)
+        call_llm = make_llm_caller(args.api_mode, args.model)
+
+        print("\nExtracting decisions...", file=sys.stderr)
+        all_decisions = extract_all_decisions(all_sessions)
+        total_decisions = sum(len(v) for v in all_decisions.values())
+        print(
+            f"  Found {total_decisions} decisions across {len(all_decisions)} sessions",
+            file=sys.stderr,
+        )
+
+        print("Scoring work streams...", file=sys.stderr)
+        score_work_streams(all_interactive_streams, all_decisions, cache, call_llm, concurrency)
+
+        print("Generating narratives...", file=sys.stderr)
+        generate_narratives(all_interactive_streams, all_decisions, cache, call_llm, concurrency)
+
+        print("Synthesizing profile...", file=sys.stderr)
+        profile_narrative, aggregate_scores = synthesize_profile(
+            all_interactive_streams,
+            all_automated_streams,
+            all_sessions,
+            len(repo_summaries),
+            cache,
+            call_llm,
+        )
+
     print("\nBuilding report...", file=sys.stderr)
     profile = build_profile_data(
-        repo_summaries, all_interactive_streams, all_automated_streams, all_sessions
+        repo_summaries,
+        all_interactive_streams,
+        all_automated_streams,
+        all_sessions,
+        aggregate_scores=aggregate_scores,
+        profile_narrative=profile_narrative,
     )
 
     output_dir = Path(args.output)
-    pdf_path, json_path = generate_report(profile, output_dir)
+    generate_report(profile, output_dir)
+
+    if args.output_format in ("html", "all"):
+        from builder_profile.html_report import generate_html_report
+
+        generate_html_report(profile, output_dir)
 
     print("\nDone.", file=sys.stderr)
     cache_stats = cache.stats()

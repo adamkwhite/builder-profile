@@ -124,6 +124,13 @@ def _apply_summary(session: Session, raw_result: str):
         session.summary = raw_result[:500]
 
 
+def make_llm_caller(use_api: bool, model: str):
+    def caller(prompt: str) -> str:
+        return _call_llm(prompt, use_api, model)
+
+    return caller
+
+
 def _call_llm(prompt: str, use_api: bool, model: str) -> str:
     if use_api:
         return _call_api(prompt, model)
@@ -171,7 +178,7 @@ def _call_api(prompt: str, model: str) -> str:
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
-        return message.content[0].text
+        return str(message.content[0].text)
     except Exception as e:
         print(f"  Warning: API call failed: {e}", file=sys.stderr)
         return ""

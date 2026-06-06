@@ -56,7 +56,7 @@ def _detect_author_emails(repo_path: str) -> set[str]:
                 if email:
                     counts[email] = counts.get(email, 0) + 1
             if counts:
-                top_email = max(counts, key=counts.get)
+                top_email = max(counts, key=lambda e: counts[e])
                 if counts[top_email] >= 3:
                     emails.add(top_email)
     except (subprocess.TimeoutExpired, FileNotFoundError):

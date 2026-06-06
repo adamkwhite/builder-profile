@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "builder-profile"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local-first builder profile generator from Claude Code sessions"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,12 +26,15 @@ dependencies = []
 
 [project.optional-dependencies]
 api = ["anthropic>=0.52.0"]
+tui = ["rich>=13.0.0"]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
     "ruff>=0.15.10",
     "mypy>=1.7.0",
     "pre-commit>=4.5.1",
+    "rich>=13.0.0",
 ]
 
 [project.scripts]
