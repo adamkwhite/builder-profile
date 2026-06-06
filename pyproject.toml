@@ -3,27 +3,29 @@ requires = ["setuptools>=82.0.1", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "your-agent-project"
+name = "builder-profile"
 version = "0.1.0"
-description = "AI agent built with clean architecture"
+description = "Local-first builder profile generator from Claude Code sessions"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 license = "MIT"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Adam White", email = "adamkwhite@gmail.com"}
 ]
-keywords = ["ai", "llm", "agent", "langchain"]
+keywords = ["claude-code", "builder-profile", "developer-analytics"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
 
-# Dependencies - mirror requirements.txt for now
-# In the future, manage dependencies here and generate requirements.txt
 dependencies = []
 
 [project.optional-dependencies]
+api = ["anthropic>=0.52.0"]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
@@ -32,102 +34,61 @@ dev = [
     "pre-commit>=4.5.1",
 ]
 
-[project.urls]
-Homepage = "https://github.com/yourusername/your-agent-project"
-Documentation = "https://github.com/yourusername/your-agent-project"
-Repository = "https://github.com/yourusername/your-agent-project"
-Issues = "https://github.com/yourusername/your-agent-project/issues"
+[project.scripts]
+builder-profile = "builder_profile.cli:main"
 
-# === RUFF CONFIGURATION ===
+[project.urls]
+Homepage = "https://github.com/adamkwhite/builder-profile"
+Repository = "https://github.com/adamkwhite/builder-profile"
+Issues = "https://github.com/adamkwhite/builder-profile/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.ruff]
 line-length = 100
-target-version = "py312"  # Match system Python (3.13 not yet supported by Ruff v0.3.0)
-
-exclude = [
-    ".git",
-    ".venv",
-    "__pycache__",
-    "build",
-    "dist",
-]
+target-version = "py310"
+exclude = [".git", ".venv", "__pycache__", "build", "dist"]
 
 [tool.ruff.lint]
-# Enable pycodestyle (E), Pyflakes (F), isort (I), and other rules
-select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # Pyflakes
-    "I",   # isort
-    "N",   # pep8-naming
-    "UP",  # pyupgrade
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "SIM", # flake8-simplify
-    "ARG", # flake8-unused-arguments
-]
-
-ignore = [
-    "E501",  # line too long (handled by ruff format)
-    "B008",  # function calls in argument defaults
-    "B905",  # zip without explicit strict parameter
-]
+select = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "ARG"]
+ignore = ["E501", "B008", "B905"]
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]  # Allow unused imports in __init__.py
+"__init__.py" = ["F401"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["src"]
+known-first-party = ["builder_profile"]
 
-# === MYPY CONFIGURATION ===
 [tool.mypy]
-python_version = "3.12"  # Match system Python
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = false  # Set to true for stricter typing
+disallow_untyped_defs = false
 ignore_missing_imports = true
 disable_error_code = ["import-untyped"]
 show_error_codes = true
-exclude = [
-    "venv/",
-    ".venv/",
-    "build/",
-    "dist/",
-]
+exclude = ["venv/", ".venv/", "build/", "dist/"]
 
-# Per-module options
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
 
-# === PYTEST CONFIGURATION ===
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = [
-    "-ra",
-    "--strict-markers",
-    "--strict-config",
-    "--cov=src",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-]
+addopts = ["-ra", "--strict-markers", "--strict-config", "--cov=src", "--cov-report=term-missing"]
 markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "slow: marks tests as slow",
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
 ]
 
-# === COVERAGE CONFIGURATION ===
 [tool.coverage.run]
 source = ["src"]
-omit = [
-    "*/tests/*",
-    "*/__pycache__/*",
-    "*/venv/*",
-    "*/.venv/*",
-]
+omit = ["*/tests/*", "*/__pycache__/*", "*/venv/*", "*/.venv/*"]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -140,14 +101,6 @@ exclude_lines = [
     "@abstractmethod",
 ]
 
-# === BANDIT SECURITY CONFIGURATION ===
 [tool.bandit]
-exclude_dirs = [
-    "tests",
-    ".venv",
-    "venv",
-]
-skips = [
-    "B101",  # assert_used - we use asserts in tests
-    "B601",  # paramiko_calls - if you use paramiko
-]
+exclude_dirs = ["tests", ".venv", "venv"]
+skips = ["B101", "B603", "B607"]
