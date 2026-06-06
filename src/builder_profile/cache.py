@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,6 +15,7 @@ class LLMCache:
         self.db_path = db_path or CACHE_DB
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn: sqlite3.Connection | None = None
+        self._lock = threading.Lock()
         self._init_db()
 
     def _init_db(self):
@@ -31,7 +33,7 @@ class LLMCache:
 
     def _get_conn(self) -> sqlite3.Connection:
         if self._conn is None:
-            self._conn = sqlite3.connect(str(self.db_path))
+            self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         return self._conn
 
     @staticmethod
@@ -39,11 +41,12 @@ class LLMCache:
         return hashlib.sha256(f"{prompt}\x00{model}".encode()).hexdigest()
 
     def get(self, prompt: str, model: str, source_mtime: float | None = None) -> str | None:
-        conn = self._get_conn()
         h = self._hash(prompt, model)
-        row = conn.execute(
-            "SELECT result, source_mtime FROM llm_cache WHERE prompt_hash = ?", (h,)
-        ).fetchone()
+        with self._lock:
+            conn = self._get_conn()
+            row = conn.execute(
+                "SELECT result, source_mtime FROM llm_cache WHERE prompt_hash = ?", (h,)
+            ).fetchone()
 
         if row is None:
             return None
@@ -54,15 +57,16 @@ class LLMCache:
         return str(row[0])
 
     def put(self, prompt: str, model: str, result: str, source_mtime: float | None = None):
-        conn = self._get_conn()
         h = self._hash(prompt, model)
         now = datetime.now(timezone.utc).isoformat()
-        conn.execute(
-            """INSERT OR REPLACE INTO llm_cache (prompt_hash, model, result, created_at, source_mtime)
-               VALUES (?, ?, ?, ?, ?)""",
-            (h, model, result, now, source_mtime),
-        )
-        conn.commit()
+        with self._lock:
+            conn = self._get_conn()
+            conn.execute(
+                """INSERT OR REPLACE INTO llm_cache (prompt_hash, model, result, created_at, source_mtime)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (h, model, result, now, source_mtime),
+            )
+            conn.commit()
 
     def clear(self):
         conn = self._get_conn()

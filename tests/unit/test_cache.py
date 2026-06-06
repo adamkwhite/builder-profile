@@ -50,3 +50,20 @@ class TestLLMCache:
         cache.put("p2", "h", "r2")
         assert cache.stats()["entries"] == 2
         cache.close()
+
+    def test_thread_safe_concurrent_access(self, tmp_path):
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        cache = LLMCache(tmp_path / "test.db")
+
+        def write_and_read(i):
+            cache.put(f"prompt{i}", "haiku", f"result{i}")
+            return cache.get(f"prompt{i}", "haiku")
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(write_and_read, i) for i in range(50)]
+            results = [f.result() for f in as_completed(futures)]
+
+        assert all(r is not None for r in results)
+        assert cache.stats()["entries"] == 50
+        cache.close()
