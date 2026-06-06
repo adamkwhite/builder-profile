@@ -14,14 +14,8 @@ def group_into_work_streams(
     commits: list[Commit],
     session_commit_map: dict[str, list[str]],
     project_name: str,
-) -> tuple[list[WorkStream], list[WorkStream]]:
-    interactive = [s for s in sessions if not s.is_automated]
-    automated = [s for s in sessions if s.is_automated]
-
-    interactive_streams = _group_sessions(interactive, commits, session_commit_map, project_name)
-    automated_streams = _group_sessions(automated, commits, session_commit_map, project_name)
-
-    return interactive_streams, automated_streams
+) -> list[WorkStream]:
+    return _group_sessions(sessions, commits, session_commit_map, project_name)
 
 
 def _group_sessions(

@@ -186,22 +186,18 @@ def _process_manifest(manifest, claude_dir, since_epoch, args, cache):
         summarize_sessions(sessions, cache, args.api_mode, args.model, concurrency)
 
     print("  Grouping into work streams...", file=sys.stderr)
-    interactive_streams, automated_streams = group_into_work_streams(
-        sessions, commits, session_commit_map, display_name
-    )
+    streams = group_into_work_streams(sessions, commits, session_commit_map, display_name)
+    auto_count = sum(1 for ws in streams if ws.is_automated)
     print(
-        f"  {len(interactive_streams)} interactive streams, "
-        f"{len(automated_streams)} automated streams",
+        f"  {len(streams) - auto_count} interactive streams, {auto_count} automated streams",
         file=sys.stderr,
     )
 
     repo_summary = _build_repo_summary(display_name, manifest, sessions, commits)
-    return sessions, interactive_streams, automated_streams, repo_summary
+    return sessions, streams, repo_summary
 
 
-def _run_llm_pipeline(
-    args, cache, all_interactive_streams, all_automated_streams, all_sessions, repo_count
-):
+def _run_llm_pipeline(args, cache, all_streams, all_sessions, repo_count):
     from builder_profile.decisions import extract_all_decisions
     from builder_profile.llm import make_llm_caller
     from builder_profile.scoring import (
@@ -225,22 +221,13 @@ def _run_llm_pipeline(
     )
 
     print(f"Scoring work streams (model: {scoring_model})...", file=sys.stderr)
-    score_work_streams(all_interactive_streams, all_decisions, cache, call_llm_scoring, concurrency)
+    score_work_streams(all_streams, all_decisions, cache, call_llm_scoring, concurrency)
 
     print(f"Generating narratives (model: {scoring_model})...", file=sys.stderr)
-    generate_narratives(
-        all_interactive_streams, all_decisions, cache, call_llm_scoring, concurrency
-    )
+    generate_narratives(all_streams, all_decisions, cache, call_llm_scoring, concurrency)
 
     print(f"Synthesizing profile (model: {synthesis_model})...", file=sys.stderr)
-    return synthesize_profile(
-        all_interactive_streams,
-        all_automated_streams,
-        all_sessions,
-        repo_count,
-        cache,
-        call_llm_synthesis,
-    )
+    return synthesize_profile(all_streams, all_sessions, repo_count, cache, call_llm_synthesis)
 
 
 def main(argv: list[str] | None = None):
@@ -283,18 +270,16 @@ def main(argv: list[str] | None = None):
     print(f"\nAnalyzing {len(selected)} projects, {total_sessions} sessions...\n", file=sys.stderr)
 
     all_sessions = []
-    all_interactive_streams: list[WorkStream] = []
-    all_automated_streams: list[WorkStream] = []
+    all_streams: list[WorkStream] = []
     repo_summaries = []
 
     for manifest in selected:
         result = _process_manifest(manifest, claude_dir, since_epoch, args, cache)
         if not result:
             continue
-        sessions, interactive, automated, repo_summary = result
+        sessions, streams, repo_summary = result
         all_sessions.extend(sessions)
-        all_interactive_streams.extend(interactive)
-        all_automated_streams.extend(automated)
+        all_streams.extend(streams)
         repo_summaries.append(repo_summary)
 
     if not all_sessions:
@@ -308,17 +293,18 @@ def main(argv: list[str] | None = None):
         profile_narrative, aggregate_scores = _run_llm_pipeline(
             args,
             cache,
-            all_interactive_streams,
-            all_automated_streams,
+            all_streams,
             all_sessions,
             len(repo_summaries),
         )
 
     print("\nBuilding report...", file=sys.stderr)
+    interactive_streams = [ws for ws in all_streams if not ws.is_automated]
+    automated_streams = [ws for ws in all_streams if ws.is_automated]
     profile = build_profile_data(
         repo_summaries,
-        all_interactive_streams,
-        all_automated_streams,
+        interactive_streams,
+        automated_streams,
         all_sessions,
         aggregate_scores=aggregate_scores,
         profile_narrative=profile_narrative,
