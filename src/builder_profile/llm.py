@@ -178,7 +178,7 @@ def _call_api(prompt: str, model: str) -> str:
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
-        return message.content[0].text
+        return str(message.content[0].text)
     except Exception as e:
         print(f"  Warning: API call failed: {e}", file=sys.stderr)
         return ""

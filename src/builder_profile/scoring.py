@@ -402,7 +402,7 @@ def _apply_narrative(ws: WorkStream, raw_result: str) -> None:
 def _parse_narrative(raw_result: str) -> str:
     try:
         data = _parse_json(raw_result)
-        return data.get("narrative", "")
+        return str(data.get("narrative", ""))
     except (json.JSONDecodeError, AttributeError):
         return raw_result[:1000]
 
@@ -413,4 +413,7 @@ def _parse_json(raw: str) -> dict:
         lines = cleaned.splitlines()
         lines = [line for line in lines if not line.strip().startswith("```")]
         cleaned = "\n".join(lines)
-    return json.loads(cleaned)
+    result = json.loads(cleaned)
+    if not isinstance(result, dict):
+        return {}
+    return result

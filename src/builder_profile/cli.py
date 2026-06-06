@@ -228,7 +228,9 @@ def main(argv: list[str] | None = None):
                 "loc_added": loc_added,
                 "loc_deleted": loc_deleted,
                 "top_files": top_files,
-                "tech_stack": sorted(file_ext_counts, key=file_ext_counts.get, reverse=True)[:5],
+                "tech_stack": sorted(
+                    file_ext_counts, key=lambda e: file_ext_counts[e], reverse=True
+                )[:5],
             }
         )
 

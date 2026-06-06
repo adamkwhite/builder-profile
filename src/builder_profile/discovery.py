@@ -60,7 +60,7 @@ def _resolve_real_path(project_dir: Path, jsonl_files: list[Path]) -> str:
             data = json.loads(index_file.read_text())
             entries = data if isinstance(data, list) else data.get("entries", [])
             if entries and "originalPath" in entries[0]:
-                return entries[0]["originalPath"]
+                return str(entries[0]["originalPath"])
         except (json.JSONDecodeError, KeyError, IndexError):
             pass
 
@@ -72,7 +72,7 @@ def _resolve_real_path(project_dir: Path, jsonl_files: list[Path]) -> str:
                     if not line or '"queue-operation"' in line:
                         continue
                     obj = json.loads(line)
-                    cwd = obj.get("cwd", "")
+                    cwd = str(obj.get("cwd", ""))
                     if cwd:
                         return cwd
                     break
