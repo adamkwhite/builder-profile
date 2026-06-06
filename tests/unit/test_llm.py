@@ -144,15 +144,15 @@ class TestSummarizeSessions:
     def test_skips_already_summarized(self, tmp_path):
         cache = LLMCache(db_path=tmp_path / "cache.db")
         session = _make_session(summary="already done")
-        result = summarize_sessions([session], cache)
-        assert result[0].summary == "already done"
+        summarize_sessions([session], cache)
+        assert session.summary == "already done"
         cache.close()
 
     def test_skips_empty_transcripts(self, tmp_path):
         cache = LLMCache(db_path=tmp_path / "cache.db")
         session = _make_session(condensed_transcript="")
-        result = summarize_sessions([session], cache)
-        assert result[0].summary == ""
+        summarize_sessions([session], cache)
+        assert session.summary == ""
         cache.close()
 
     @patch("builder_profile.llm._call_llm")
@@ -171,5 +171,5 @@ class TestSummarizeSessions:
         cache.get.return_value = None
 
         session = _make_session(summary="", condensed_transcript="USER: do thing")
-        result = summarize_sessions([session], cache)
-        assert result[0].summary == "new summary"
+        summarize_sessions([session], cache)
+        assert session.summary == "new summary"

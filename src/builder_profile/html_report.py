@@ -152,44 +152,44 @@ def _render_repos(repos: list[dict]) -> str:
 </div>"""
 
 
-def _render_streams(streams: list) -> str:
-    if not streams:
+def _render_stream_scores(ws) -> str:
+    if not ws.scores:
         return ""
+    parts = []
+    for axis, data in ws.scores.items():
+        if not isinstance(data, dict):
+            continue
+        s = data.get("score", 0)
+        sc = f"score-{min(int(s), 5)}"
+        label = axis.replace("_", " ").title()
+        parts.append(f"<span class='score {sc}'>{s}</span> {label}")
+    if not parts:
+        return ""
+    return "<div style='margin-top:0.5rem'>" + " &middot; ".join(parts) + "</div>"
 
-    cards = []
-    for ws in streams:
-        start = ws.start_time.strftime("%Y-%m-%d") if ws.start_time else "?"
-        end = ws.end_time.strftime("%Y-%m-%d") if ws.end_time else "?"
 
-        scores_inline = ""
-        if ws.scores:
-            parts = []
-            for axis, data in ws.scores.items():
-                if isinstance(data, dict):
-                    s = data.get("score", 0)
-                    sc = f"score-{min(int(s), 5)}"
-                    label = axis.replace("_", " ").title()
-                    parts.append(f"<span class='score {sc}'>{s}</span> {label}")
-            if parts:
-                scores_inline = (
-                    "<div style='margin-top:0.5rem'>" + " &middot; ".join(parts) + "</div>"
-                )
+def _render_stream_card(ws) -> str:
+    start = ws.start_time.strftime("%Y-%m-%d") if ws.start_time else "?"
+    end = ws.end_time.strftime("%Y-%m-%d") if ws.end_time else "?"
+    narrative_block = f"<div class='narrative'>{ws.narrative}</div>" if ws.narrative else ""
+    decisions_block = ""
+    if ws.decisions:
+        items = "".join(f"<li>{d}</li>" for d in ws.decisions[:5])
+        decisions_block = f"<ul class='decisions'>{items}</ul>"
 
-        narrative_block = f"<div class='narrative'>{ws.narrative}</div>" if ws.narrative else ""
-
-        decisions_block = ""
-        if ws.decisions:
-            items = "".join(f"<li>{d}</li>" for d in ws.decisions[:5])
-            decisions_block = f"<ul class='decisions'>{items}</ul>"
-
-        cards.append(f"""<div class="card">
+    return f"""<div class="card">
 <h3>{ws.title}</h3>
 <div class="stream-meta">{ws.project} &middot; {start} to {end} &middot;
 {len(ws.sessions)} sessions &middot; {len(ws.commits)} commits &middot;
 <span class="loc-add">+{ws.loc_added}</span>/<span class="loc-del">-{ws.loc_deleted}</span> LOC</div>
-{narrative_block}{scores_inline}{decisions_block}
-</div>""")
+{narrative_block}{_render_stream_scores(ws)}{decisions_block}
+</div>"""
 
+
+def _render_streams(streams: list) -> str:
+    if not streams:
+        return ""
+    cards = [_render_stream_card(ws) for ws in streams]
     return "<h2>Work Streams</h2>\n" + "\n".join(cards)
 
 

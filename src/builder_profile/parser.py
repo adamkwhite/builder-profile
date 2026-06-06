@@ -62,8 +62,16 @@ def _process_line(
     transcript_parts: list[str],
     seen_entrypoints: set[str],
 ) -> None:
-    msg_type = obj.get("type", "")
+    _extract_metadata(obj, session, seen_entrypoints)
+    _update_timestamps(obj, session)
 
+    msg_type = obj.get("type", "")
+    handler = _MSG_HANDLERS.get(msg_type)
+    if handler:
+        handler(obj, session, transcript_parts)
+
+
+def _extract_metadata(obj: dict, session: Session, seen_entrypoints: set[str]) -> None:
     if "sessionId" in obj and not session.id:
         session.id = obj["sessionId"]
     if "cwd" in obj and not session.cwd:
@@ -75,64 +83,96 @@ def _process_line(
         if not session.entrypoint or session.entrypoint == "cli":
             session.entrypoint = obj["entrypoint"]
 
+
+def _update_timestamps(obj: dict, session: Session) -> None:
     ts = _parse_timestamp(obj.get("timestamp"))
-    if ts:
-        if session.start_time is None or ts < session.start_time:
-            session.start_time = ts
-        if session.end_time is None or ts > session.end_time:
-            session.end_time = ts
+    if not ts:
+        return
+    if session.start_time is None or ts < session.start_time:
+        session.start_time = ts
+    if session.end_time is None or ts > session.end_time:
+        session.end_time = ts
 
-    if msg_type == "user":
-        session.user_message_count += 1
-        message = obj.get("message", {})
-        content = message.get("content", "")
-        if isinstance(content, str) and not obj.get("isMeta"):
-            text = content[:200]
-            transcript_parts.append(f"USER: {text}")
-            for marker in HARNESS_MARKERS:
-                if marker in content:
-                    session.is_automated = True
 
-    elif msg_type == "assistant":
-        session.assistant_message_count += 1
-        message = obj.get("message", {})
+def _check_harness_markers(content: str, session: Session) -> None:
+    for marker in HARNESS_MARKERS:
+        if marker in content:
+            session.is_automated = True
+            return
 
-        if not session.model and "model" in message:
-            session.model = message["model"]
 
-        usage = message.get("usage", {})
-        if usage:
-            session.token_usage.input_tokens += usage.get("input_tokens", 0)
-            session.token_usage.output_tokens += usage.get("output_tokens", 0)
-            session.token_usage.cache_read_tokens += usage.get("cache_read_input_tokens", 0)
-            session.token_usage.cache_create_tokens += usage.get("cache_creation_input_tokens", 0)
+def _handle_user(obj: dict, session: Session, transcript_parts: list[str]) -> None:
+    session.user_message_count += 1
+    message = obj.get("message", {})
+    content = message.get("content", "")
+    if isinstance(content, str) and not obj.get("isMeta"):
+        transcript_parts.append(f"USER: {content[:200]}")
+        _check_harness_markers(content, session)
 
-        content = message.get("content", [])
-        if isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict):
-                    if block.get("type") == "text":
-                        text = block.get("text", "")[:100]
-                        transcript_parts.append(f"ASSISTANT: {text}")
-                    elif block.get("type") == "tool_use":
-                        tc = _extract_tool_call(block, ts)
-                        session.tool_calls.append(tc)
-                        _track_files(block, session)
-                        transcript_parts.append(f"TOOL: {tc.name} -> {tc.target}")
 
-    elif msg_type == "ai-title":
-        if not session.title:
-            session.title = obj.get("aiTitle", "")
+def _handle_assistant(obj: dict, session: Session, transcript_parts: list[str]) -> None:
+    session.assistant_message_count += 1
+    message = obj.get("message", {})
 
-    elif msg_type == "custom-title":
-        session.title = obj.get("customTitle", session.title)
+    if not session.model and "model" in message:
+        session.model = message["model"]
 
-    elif msg_type == "queue-operation":
-        content = obj.get("content", "")
-        if isinstance(content, str):
-            for marker in HARNESS_MARKERS:
-                if marker in content:
-                    session.is_automated = True
+    _accumulate_usage(message, session)
+
+    ts = _parse_timestamp(obj.get("timestamp"))
+    content = message.get("content", [])
+    if isinstance(content, list):
+        _process_content_blocks(content, ts, session, transcript_parts)
+
+
+def _accumulate_usage(message: dict, session: Session) -> None:
+    usage = message.get("usage", {})
+    if not usage:
+        return
+    session.token_usage.input_tokens += usage.get("input_tokens", 0)
+    session.token_usage.output_tokens += usage.get("output_tokens", 0)
+    session.token_usage.cache_read_tokens += usage.get("cache_read_input_tokens", 0)
+    session.token_usage.cache_create_tokens += usage.get("cache_creation_input_tokens", 0)
+
+
+def _process_content_blocks(
+    blocks: list, ts: datetime | None, session: Session, transcript_parts: list[str]
+) -> None:
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type")
+        if block_type == "text":
+            transcript_parts.append(f"ASSISTANT: {block.get('text', '')[:100]}")
+        elif block_type == "tool_use":
+            tc = _extract_tool_call(block, ts)
+            session.tool_calls.append(tc)
+            _track_files(block, session)
+            transcript_parts.append(f"TOOL: {tc.name} -> {tc.target}")
+
+
+def _handle_ai_title(obj: dict, session: Session, _transcript_parts: list[str]) -> None:
+    if not session.title:
+        session.title = obj.get("aiTitle", "")
+
+
+def _handle_custom_title(obj: dict, session: Session, _transcript_parts: list[str]) -> None:
+    session.title = obj.get("customTitle", session.title)
+
+
+def _handle_queue_operation(obj: dict, session: Session, _transcript_parts: list[str]) -> None:
+    content = obj.get("content", "")
+    if isinstance(content, str):
+        _check_harness_markers(content, session)
+
+
+_MSG_HANDLERS = {
+    "user": _handle_user,
+    "assistant": _handle_assistant,
+    "ai-title": _handle_ai_title,
+    "custom-title": _handle_custom_title,
+    "queue-operation": _handle_queue_operation,
+}
 
 
 def _extract_tool_call(block: dict, ts: datetime | None) -> ToolCall:

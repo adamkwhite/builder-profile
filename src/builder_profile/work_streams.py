@@ -85,31 +85,43 @@ def _group_main_by_files(sessions: list[Session]) -> list[list[Session]]:
     chunks: list[list[Session]] = []
 
     for s in sessions:
-        placed = False
-        s_files = set(s.files_touched)
-
-        if s_files:
-            for chunk in chunks:
-                last = chunk[-1]
-                last_end = last.end_time
-                if last_end and s.start_time and (s.start_time - last_end) > TEMPORAL_THRESHOLD:
-                    continue
-
-                chunk_files: set[str] = set()
-                for cs in chunk:
-                    chunk_files.update(cs.files_touched)
-
-                if chunk_files:
-                    overlap = len(s_files & chunk_files) / max(len(s_files), 1)
-                    if overlap >= FILE_OVERLAP_THRESHOLD:
-                        chunk.append(s)
-                        placed = True
-                        break
-
-        if not placed:
+        target = _find_matching_chunk(s, chunks)
+        if target is not None:
+            chunks[target].append(s)
+        else:
             chunks.append([s])
 
     return chunks
+
+
+def _find_matching_chunk(session: Session, chunks: list[list[Session]]) -> int | None:
+    s_files = set(session.files_touched)
+    if not s_files:
+        return None
+
+    for idx, chunk in enumerate(chunks):
+        if _is_temporal_gap(chunk[-1], session):
+            continue
+        if _has_file_overlap(s_files, chunk):
+            return idx
+    return None
+
+
+def _is_temporal_gap(last_session: Session, current: Session) -> bool:
+    last_end = last_session.end_time
+    return bool(
+        last_end and current.start_time and (current.start_time - last_end) > TEMPORAL_THRESHOLD
+    )
+
+
+def _has_file_overlap(s_files: set[str], chunk: list[Session]) -> bool:
+    chunk_files: set[str] = set()
+    for cs in chunk:
+        chunk_files.update(cs.files_touched)
+    if not chunk_files:
+        return False
+    overlap = len(s_files & chunk_files) / max(len(s_files), 1)
+    return overlap >= FILE_OVERLAP_THRESHOLD
 
 
 def _build_work_stream(

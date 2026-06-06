@@ -106,121 +106,138 @@ def _write_json(profile: ProfileData, path: Path):
     print(f"  JSON: {path}", file=sys.stderr)
 
 
-def _write_markdown(profile: ProfileData, path: Path):
-    lines: list[str] = []
-    lines.append("---")
-    lines.append("geometry: margin=0.5in")
-    lines.append("title: Builder Profile")
-    lines.append(f"date: {datetime.now().strftime('%Y-%m-%d')}")
-    lines.append("---")
-    lines.append("")
-
+def _md_header(profile: ProfileData) -> list[str]:
     date_from = profile.date_range.get("from", "")[:10]
     date_to = profile.date_range.get("to", "")[:10]
-    lines.append(f"**Date range**: {date_from} to {date_to}")
-    lines.append(f"**Repos analyzed**: {len(profile.repos)}")
     total_sessions = sum(r.get("sessions", 0) for r in profile.repos)
     total_commits = sum(r.get("commits", 0) for r in profile.repos)
-    lines.append(f"**Total sessions**: {total_sessions} | **Total commits**: {total_commits}")
+    return [
+        "---",
+        "geometry: margin=0.5in",
+        "title: Builder Profile",
+        f"date: {datetime.now().strftime('%Y-%m-%d')}",
+        "---",
+        "",
+        f"**Date range**: {date_from} to {date_to}",
+        f"**Repos analyzed**: {len(profile.repos)}",
+        f"**Total sessions**: {total_sessions} | **Total commits**: {total_commits}",
+        "",
+    ]
+
+
+def _md_scores(profile: ProfileData) -> list[str]:
+    if not profile.aggregate_scores:
+        return []
+    lines = [
+        "## Scoring Summary",
+        "",
+        "| Axis | Score | Justification |",
+        "|------|-------|---------------|",
+    ]
+    for axis, data in profile.aggregate_scores.items():
+        if not isinstance(data, dict):
+            continue
+        label = axis.replace("_", " ").title()
+        score = data.get("score", "?")
+        justification = data.get("justification", "")
+        lines.append(f"| {label} | {_score_bar(score)} {score}/5 | {justification} |")
     lines.append("")
+    return lines
 
-    if profile.profile_narrative:
-        lines.append("## Builder Profile")
-        lines.append("")
-        lines.append(profile.profile_narrative)
-        lines.append("")
 
-    if profile.aggregate_scores:
-        lines.append("## Scoring Summary")
-        lines.append("")
-        lines.append("| Axis | Score | Justification |")
-        lines.append("|------|-------|---------------|")
-        for axis, data in profile.aggregate_scores.items():
-            if isinstance(data, dict):
-                label = axis.replace("_", " ").title()
-                score = data.get("score", "?")
-                justification = data.get("justification", "")
-                bar = _score_bar(score)
-                lines.append(f"| {label} | {bar} {score}/5 | {justification} |")
-        lines.append("")
-
-    lines.append("## Projects")
-    lines.append("")
-    lines.append("| Project | Sessions | Commits | LOC +/- | Top Files |")
-    lines.append("|---------|----------|---------|---------|-----------|")
+def _md_projects(profile: ProfileData) -> list[str]:
+    lines = [
+        "## Projects",
+        "",
+        "| Project | Sessions | Commits | LOC +/- | Top Files |",
+        "|---------|----------|---------|---------|-----------|",
+    ]
     for repo in profile.repos:
         name = repo.get("name", "unknown")
-        sess = repo.get("sessions", 0)
-        commits = repo.get("commits", 0)
         loc = f"+{repo.get('loc_added', 0)}/-{repo.get('loc_deleted', 0)}"
         top = ", ".join(repo.get("top_files", [])[:3])
-        lines.append(f"| {name} | {sess} | {commits} | {loc} | {top} |")
+        lines.append(
+            f"| {name} | {repo.get('sessions', 0)} | {repo.get('commits', 0)} | {loc} | {top} |"
+        )
     lines.append("")
+    return lines
+
+
+def _md_work_stream(ws: WorkStream) -> list[str]:
+    start = ws.start_time.strftime("%Y-%m-%d") if ws.start_time else "?"
+    end = ws.end_time.strftime("%Y-%m-%d") if ws.end_time else "?"
+    lines = [
+        f"### {ws.title}",
+        "",
+        f"*{ws.project}* | {start} to {end} | "
+        f"{len(ws.sessions)} sessions | {len(ws.commits)} commits | "
+        f"+{ws.loc_added}/-{ws.loc_deleted} LOC",
+        "",
+    ]
+    if ws.narrative:
+        lines.extend([ws.narrative, ""])
+    elif ws.summary:
+        lines.extend([ws.summary, ""])
+    if ws.scores:
+        score_parts = [
+            f"{axis.replace('_', ' ').title()}: {data.get('score', '?')}/5"
+            for axis, data in ws.scores.items()
+            if isinstance(data, dict)
+        ]
+        if score_parts:
+            lines.extend([f"**Scores:** {', '.join(score_parts)}", ""])
+    if ws.decisions:
+        lines.append("**Key decisions:**")
+        lines.extend(f"- {d}" for d in ws.decisions[:5])
+        lines.append("")
+    return lines
+
+
+def _md_automation(profile: ProfileData) -> list[str]:
+    if not profile.automated_streams:
+        return []
+    total_auto = sum(len(ws.sessions) for ws in profile.automated_streams)
+    total_auto_commits = sum(len(ws.commits) for ws in profile.automated_streams)
+    lines = [
+        "## Automation & CI",
+        "",
+        f"**{total_auto} automated sessions** across "
+        f"{len(profile.automated_streams)} work streams, "
+        f"producing {total_auto_commits} commits.",
+        "",
+    ]
+    for ws in profile.automated_streams[:10]:
+        start = ws.start_time.strftime("%Y-%m-%d") if ws.start_time else "?"
+        lines.append(
+            f"- **{ws.title}** ({start}) - "
+            f"{len(ws.sessions)} sessions, +{ws.loc_added}/-{ws.loc_deleted} LOC"
+        )
+    lines.append("")
+    return lines
+
+
+def _write_markdown(profile: ProfileData, path: Path):
+    lines = _md_header(profile)
+
+    if profile.profile_narrative:
+        lines.extend(["## Builder Profile", "", profile.profile_narrative, ""])
+
+    lines.extend(_md_scores(profile))
+    lines.extend(_md_projects(profile))
 
     if profile.work_streams:
-        lines.append("## Work Streams")
-        lines.append("")
+        lines.extend(["## Work Streams", ""])
         for ws in profile.work_streams:
-            start = ws.start_time.strftime("%Y-%m-%d") if ws.start_time else "?"
-            end = ws.end_time.strftime("%Y-%m-%d") if ws.end_time else "?"
-            lines.append(f"### {ws.title}")
-            lines.append("")
-            lines.append(
-                f"*{ws.project}* | {start} to {end} | "
-                f"{len(ws.sessions)} sessions | {len(ws.commits)} commits | "
-                f"+{ws.loc_added}/-{ws.loc_deleted} LOC"
-            )
-            lines.append("")
-            if ws.narrative:
-                lines.append(ws.narrative)
-                lines.append("")
-            elif ws.summary:
-                lines.append(ws.summary)
-                lines.append("")
-            if ws.scores:
-                score_parts = []
-                for axis, data in ws.scores.items():
-                    if isinstance(data, dict):
-                        score_parts.append(
-                            f"{axis.replace('_', ' ').title()}: {data.get('score', '?')}/5"
-                        )
-                if score_parts:
-                    lines.append(f"**Scores:** {', '.join(score_parts)}")
-                    lines.append("")
-            if ws.decisions:
-                lines.append("**Key decisions:**")
-                for d in ws.decisions[:5]:
-                    lines.append(f"- {d}")
-                lines.append("")
+            lines.extend(_md_work_stream(ws))
 
-    if profile.automated_streams:
-        lines.append("## Automation & CI")
-        lines.append("")
-        total_auto = sum(len(ws.sessions) for ws in profile.automated_streams)
-        total_auto_commits = sum(len(ws.commits) for ws in profile.automated_streams)
-        lines.append(
-            f"**{total_auto} automated sessions** across "
-            f"{len(profile.automated_streams)} work streams, "
-            f"producing {total_auto_commits} commits."
-        )
-        lines.append("")
-        for ws in profile.automated_streams[:10]:
-            start = ws.start_time.strftime("%Y-%m-%d") if ws.start_time else "?"
-            lines.append(
-                f"- **{ws.title}** ({start}) - "
-                f"{len(ws.sessions)} sessions, +{ws.loc_added}/-{ws.loc_deleted} LOC"
-            )
-        lines.append("")
+    lines.extend(_md_automation(profile))
 
     if profile.velocity_timeline:
-        lines.append("## Velocity")
-        lines.append("")
+        lines.extend(["## Velocity", ""])
         lines.extend(_ascii_velocity_chart(profile.velocity_timeline[-16:]))
         lines.append("")
 
-    lines.append("---")
-    lines.append(f"*Generated by builder-profile v{profile.tool_version}*")
-
+    lines.extend(["---", f"*Generated by builder-profile v{profile.tool_version}*"])
     path.write_text("\n".join(lines))
 
 

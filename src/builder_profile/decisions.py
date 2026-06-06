@@ -28,27 +28,34 @@ def extract_decisions(session: Session) -> list[dict]:
     prev_context = ""
     for i, line in enumerate(lines):
         if line.startswith("USER: "):
-            text = line[6:]
-            decision_type = _classify_line(text)
-            if decision_type:
-                outcome = ""
-                for j in range(i + 1, min(i + 3, len(lines))):
-                    if lines[j].startswith("ASSISTANT: ") or lines[j].startswith("TOOL: "):
-                        outcome = lines[j]
-                        break
-
-                decisions.append(
-                    {
-                        "context": prev_context,
-                        "decision": text,
-                        "outcome": outcome,
-                        "type": decision_type,
-                    }
-                )
+            decision = _try_classify_decision(line[6:], lines, i, prev_context)
+            if decision:
+                decisions.append(decision)
         elif line.startswith("TOOL: ") or line.startswith("ASSISTANT: "):
             prev_context = line
 
     return decisions
+
+
+def _try_classify_decision(text: str, lines: list[str], idx: int, context: str) -> dict | None:
+    decision_type = _classify_line(text)
+    if not decision_type:
+        return None
+
+    outcome = _find_outcome(lines, idx)
+    return {
+        "context": context,
+        "decision": text,
+        "outcome": outcome,
+        "type": decision_type,
+    }
+
+
+def _find_outcome(lines: list[str], user_idx: int) -> str:
+    for j in range(user_idx + 1, min(user_idx + 3, len(lines))):
+        if lines[j].startswith("ASSISTANT: ") or lines[j].startswith("TOOL: "):
+            return lines[j]
+    return ""
 
 
 def _classify_line(text: str) -> str:
