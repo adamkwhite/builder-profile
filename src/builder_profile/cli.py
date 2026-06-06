@@ -25,6 +25,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Generate a builder profile from Claude Code sessions",
     )
     parser.add_argument(
+        "--view",
+        metavar="JSON_PATH",
+        help="View a previously generated profile.json in the terminal (skip generation)",
+    )
+    parser.add_argument(
         "--since",
         help="Only include sessions since this time (e.g. 6h, 7d, 2w, 1m, 2026-01-01)",
     )
@@ -75,10 +80,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--format",
-        choices=["pdf", "html", "all"],
+        choices=["pdf", "html", "tui", "all"],
         default="pdf",
         dest="output_format",
-        help="Output format: pdf (default), html, or all",
+        help="Output format: pdf (default), html, tui (terminal dashboard), or all",
     )
     return parser.parse_args(argv)
 
@@ -235,6 +240,13 @@ def _run_llm_pipeline(
 
 def main(argv: list[str] | None = None):
     args = parse_args(argv)
+
+    if args.view:
+        from builder_profile.tui import render_tui
+
+        render_tui(profile_json=Path(args.view))
+        return
+
     _check_deps(args)
 
     since_epoch = parse_since(args.since) if args.since else None
@@ -314,6 +326,12 @@ def main(argv: list[str] | None = None):
         from builder_profile.html_report import generate_html_report
 
         generate_html_report(profile, output_dir)
+
+    if args.output_format in ("tui", "all"):
+        from builder_profile.tui import render_tui
+
+        json_path = output_dir / "profile.json"
+        render_tui(profile_json=json_path)
 
     print("\nDone.", file=sys.stderr)
     cache_stats = cache.stats()
