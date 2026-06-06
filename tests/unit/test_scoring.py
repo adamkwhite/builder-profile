@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from builder_profile.models import Session, ToolCall, WorkStream
+from builder_profile.models import Commit, Session, ToolCall, WorkStream
 from builder_profile.scoring import (
     SCORING_AXES,
     _apply_narrative,
@@ -31,12 +31,27 @@ def _make_session(session_id="s1", summary="", tool_calls=None) -> Session:
     )
 
 
+def _make_commits(n: int) -> list[Commit]:
+    return [
+        Commit(
+            sha=f"abc{i}",
+            short_sha=f"abc{i}"[:7],
+            author_name="dev",
+            author_email="dev@test.com",
+            date=datetime(2026, 5, 1, i, tzinfo=timezone.utc),
+            subject=f"commit {i}",
+        )
+        for i in range(n)
+    ]
+
+
 def _make_stream(
     title="Test Stream",
     sessions=None,
     scores=None,
     loc_added=100,
     loc_deleted=50,
+    commits=None,
     narrative="",
     summary="",
     start_time=None,
@@ -50,6 +65,7 @@ def _make_stream(
         project="test-project",
         branch="feature/test",
         sessions=sessions,
+        commits=commits or [],
         loc_added=loc_added,
         loc_deleted=loc_deleted,
         files_touched=["src/main.py", "tests/test_main.py"],
@@ -103,18 +119,27 @@ class TestComputeAggregateScores:
         ws1 = _make_stream(
             title="Stream 1",
             sessions=[Session(id="s1", project_dir="t"), Session(id="s2", project_dir="t")],
-            scores={"velocity": {"score": 4, "justification": ""}},
+            commits=_make_commits(5),
+            loc_added=500,
+            loc_deleted=100,
+            scores={"velocity": {"score": 4, "justification": "fast delivery"}},
         )
         ws2 = _make_stream(
             title="Stream 2",
             sessions=[Session(id="s3", project_dir="t")],
-            scores={"velocity": {"score": 1, "justification": ""}},
+            commits=_make_commits(1),
+            loc_added=20,
+            loc_deleted=10,
+            scores={"velocity": {"score": 1, "justification": "slow"}},
         )
 
         agg = compute_aggregate_scores([ws1, ws2])
         assert "velocity" in agg
-        assert agg["velocity"]["score"] == 3.0
+        # ws1 weight=max(1, 5+600/100)=11.0, ws2 weight=max(1, 1+30/100)=1.3
+        # weighted avg = (4*11 + 1*1.3) / (11+1.3) = 45.3/12.3 ≈ 3.7
+        assert agg["velocity"]["score"] == 3.7
         assert agg["velocity"]["sample_size"] == 2
+        assert agg["velocity"]["justification"] == "fast delivery"
 
     def test_empty_streams(self):
         assert compute_aggregate_scores([]) == {}

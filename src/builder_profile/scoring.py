@@ -220,19 +220,22 @@ def synthesize_profile(
 
 
 def compute_aggregate_scores(streams: list[WorkStream]) -> dict:
-    scored = [ws for ws in streams if ws.scores]
+    scored = [ws for ws in streams if ws.scores and _has_substantive_work(ws)]
     if not scored:
         return {}
 
     totals: dict[str, list[float]] = {axis: [] for axis in SCORING_AXES}
-    weights: dict[str, list[int]] = {axis: [] for axis in SCORING_AXES}
+    weights: dict[str, list[float]] = {axis: [] for axis in SCORING_AXES}
 
     for ws in scored:
         _accumulate_scores(ws, totals, weights)
 
+    best_justification = _pick_best_justifications(scored)
+
     return {
         axis: {
             "score": round(sum(totals[axis]) / sum(weights[axis]), 1),
+            "justification": best_justification.get(axis, ""),
             "sample_size": len(totals[axis]),
         }
         for axis in SCORING_AXES
@@ -240,12 +243,35 @@ def compute_aggregate_scores(streams: list[WorkStream]) -> dict:
     }
 
 
+def _pick_best_justifications(scored: list[WorkStream]) -> dict[str, str]:
+    best: dict[str, tuple[float, str]] = {}
+    for ws in scored:
+        weight = _compute_weight(ws)
+        for axis in SCORING_AXES:
+            data = ws.scores.get(axis)
+            if not isinstance(data, dict):
+                continue
+            justification = data.get("justification", "")
+            if justification and (axis not in best or weight > best[axis][0]):
+                best[axis] = (weight, justification)
+    return {axis: text for axis, (_, text) in best.items()}
+
+
+def _has_substantive_work(ws: WorkStream) -> bool:
+    return len(ws.commits) > 0 or ws.loc_added + ws.loc_deleted > 0 or len(ws.files_touched) > 5
+
+
+def _compute_weight(ws: WorkStream) -> float:
+    loc_impact = (ws.loc_added + ws.loc_deleted) / 100
+    return max(1.0, len(ws.commits) + loc_impact)
+
+
 def _accumulate_scores(
     ws: WorkStream,
     totals: dict[str, list[float]],
-    weights: dict[str, list[int]],
+    weights: dict[str, list[float]],
 ) -> None:
-    weight = len(ws.sessions)
+    weight = _compute_weight(ws)
     for axis in SCORING_AXES:
         score_data = ws.scores.get(axis)
         if not isinstance(score_data, dict):
