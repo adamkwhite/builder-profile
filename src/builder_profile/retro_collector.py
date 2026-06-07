@@ -53,7 +53,7 @@ def aggregate_retros(retros: list[dict]) -> BehavioralSignals:
         total_commits += m.get("commits", 0)
         total_insertions += m.get("insertions", 0)
         total_prs += m.get("prs_merged", m.get("prs_referenced", 0))
-        total_ai_commits += m.get("ai_assisted_commits", 0)
+        total_ai_commits += m.get("ai_assisted_commits", m.get("commits", 0))
         total_sessions += m.get("sessions", 0)
         total_deep += m.get("deep_sessions", 0)
         total_micro += m.get("micro_sessions", 0)
