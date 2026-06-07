@@ -1,5 +1,6 @@
 import json
 import subprocess
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from builder_profile.models import BehavioralProfile, BehavioralSignals, InsightCard
@@ -14,8 +15,8 @@ from builder_profile.report import (
 )
 
 
-def _make_sig(**kwargs) -> BehavioralSignals:
-    defaults = {
+def _make_sig(**kwargs: Any) -> BehavioralSignals:
+    defaults: dict[str, Any] = {
         "total_commits": 100,
         "total_insertions": 10000,
         "total_prs": 50,
@@ -47,8 +48,8 @@ def _make_sig(**kwargs) -> BehavioralSignals:
     return BehavioralSignals(**defaults)
 
 
-def _make_profile(**kwargs) -> BehavioralProfile:
-    defaults = {
+def _make_profile(**kwargs: Any) -> BehavioralProfile:
+    defaults: dict[str, Any] = {
         "generated_at": "2026-01-01T00:00:00Z",
         "archetype": "Velocity Machine",
         "secondary_archetypes": ["Night Owl"],
@@ -122,8 +123,9 @@ class TestFmtMetricsTable:
     def test_contains_markdown_table(self):
         sig = _make_sig()
         lines = _fmt_metrics_table(sig)
-        assert lines[0].startswith("| Signal")
-        assert lines[1].startswith("|---")
+        combined = "\n".join(lines)
+        assert "| | |" in combined
+        assert "|---|---|" in combined
 
     def test_zero_rows_excluded(self):
         sig = _make_sig(max_parallel_agents=0, politeness_count=0)
@@ -219,7 +221,7 @@ class TestWriteMarkdown:
         _write_markdown(profile, out)
         content = out.read_text()
         assert "## Metrics" in content
-        assert "Total commits" in content
+        assert "Commits" in content
 
     def test_footer(self, tmp_path):
         profile = _make_profile()

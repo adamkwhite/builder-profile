@@ -139,12 +139,12 @@ def _write_markdown(profile: BehavioralProfile, path: Path):
 
 
 def _fmt_metrics_table(sig: BehavioralSignals) -> list[str]:
-    _SKIP = {"0", "0 min", "0.0 words", "0%", " to ", "0 days"}
+    _skip = {"0", "0 min", "0.0 words", "0%", " to ", "0 days"}
 
     def table(rows: list[tuple[str, str]]) -> list[str]:
         out = ["| | |", "|---|---|"]
         for label, value in rows:
-            if value and value not in _SKIP:
+            if value and value not in _skip:
                 out.append(f"| {label} | {value} |")
         return out if len(out) > 2 else []
 
