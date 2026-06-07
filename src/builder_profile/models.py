@@ -109,3 +109,70 @@ class ProfileData:
     aggregate_scores: dict = field(default_factory=dict)
     profile_narrative: str = ""
     velocity_timeline: list[dict] = field(default_factory=list)
+
+
+@dataclass
+class InsightCard:
+    category: str
+    title: str
+    body: str
+    signal: str = ""
+
+
+@dataclass
+class BehavioralSignals:
+    # Temporal
+    peak_hour: int | None = None
+    late_night_pct: float = 0.0
+    hourly_distribution: dict = field(default_factory=dict)
+    best_shipping_day: str = ""
+    # Volume
+    total_commits: int = 0
+    total_insertions: int = 0
+    total_prs: int = 0
+    streak_days_max: int = 0
+    date_from: str = ""
+    date_to: str = ""
+    # Sessions
+    total_sessions: int = 0
+    deep_session_count: int = 0
+    micro_session_count: int = 0
+    longest_session_minutes: int = 0
+    avg_session_minutes: float = 0.0
+    loc_per_session_hour: float = 0.0
+    # Quality
+    test_ratio_avg: float = 0.0
+    feat_pct: float = 0.0
+    fix_pct: float = 0.0
+    # Models
+    model_distribution: dict = field(default_factory=dict)
+    # Agent usage
+    max_parallel_agents: int = 0
+    ai_assisted_commits: int = 0
+    session_highlights: list[str] = field(default_factory=list)
+    # Steering (from transcripts)
+    plan_mode_pct: float = 0.0
+    avg_prompt_words: float = 0.0
+    correction_rate: float = 0.0
+    politeness_count: int = 0
+    question_ratio: float = 0.0
+    top_phrases: list[str] = field(default_factory=list)
+    most_cryptic_prompt: str = ""
+    longest_prompt: str = ""
+    # Projects
+    project_count: int = 0
+    hotspots: list[dict] = field(default_factory=list)
+    # Session rituals (from claude-memory)
+    wrapup_count: int = 0
+    planning_session_count: int = 0
+
+
+@dataclass
+class BehavioralProfile:
+    generated_at: str = ""
+    archetype: str = ""
+    secondary_archetypes: list[str] = field(default_factory=list)
+    insight_cards: list[InsightCard] = field(default_factory=list)
+    portrait: str = ""
+    growth_edge: str = ""
+    signals: BehavioralSignals = field(default_factory=BehavioralSignals)
