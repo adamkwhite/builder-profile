@@ -1,0 +1,87 @@
+{
+  "date": "2026-06-07",
+  "window": "ytd-2026",
+  "window_start": "2026-01-01T00:00:00",
+  "window_end": "2026-06-07T13:25:17",
+  "metrics": {
+    "commits": 14,
+    "contributors": 1,
+    "prs_merged": 14,
+    "insertions": 12589,
+    "deletions": 1658,
+    "net_loc": 10931,
+    "test_loc_insertions": 3442,
+    "test_ratio": 0.273,
+    "active_days": 3,
+    "feat_pct": 0.0,
+    "fix_pct": 0.0,
+    "refactor_pct": 0.0,
+    "test_pct": 0.0,
+    "docs_pct": 0.0,
+    "chore_pct": 0.071,
+    "perf_pct": 0.0,
+    "peak_hour": 22,
+    "ai_assisted_commits": 14,
+    "streak_days": 3
+  },
+  "authors": {
+    "Adam White": {
+      "commits": 14,
+      "insertions": 12589,
+      "deletions": 1658,
+      "test_ratio": 0.273
+    }
+  },
+  "hotspots": [
+    {
+      "file": "tests/unit/test_report.py",
+      "changes": 1059
+    },
+    {
+      "file": "src/builder_profile/cli.py",
+      "changes": 961
+    },
+    {
+      "file": "src/builder_profile/report.py",
+      "changes": 939
+    },
+    {
+      "file": "tests/unit/test_discovery.py",
+      "changes": 691
+    },
+    {
+      "file": "tests/unit/test_scoring.py",
+      "changes": 666
+    },
+    {
+      "file": "src/builder_profile/scoring.py",
+      "changes": 647
+    },
+    {
+      "file": "scripts/setup-repo.sh",
+      "changes": 586
+    },
+    {
+      "file": "tests/unit/test_git_collector.py",
+      "changes": 443
+    },
+    {
+      "file": "docs/repository-setup.md",
+      "changes": 414
+    },
+    {
+      "file": "src/builder_profile/parser.py",
+      "changes": 346
+    }
+  ],
+  "hourly_distribution": {
+    "8": 2,
+    "9": 1,
+    "10": 2,
+    "12": 1,
+    "18": 1,
+    "21": 2,
+    "22": 3,
+    "23": 2
+  }
+}
