@@ -115,6 +115,13 @@ def main(argv: list[str] | None = None):
     code_dir = Path(args.code_dir).expanduser()
     claude_dir = Path(args.claude_dir).expanduser() if args.claude_dir else CLAUDE_PROJECTS_DIR
 
+    # Step 0: Refresh stats-cache.json (replicates what /stats does in the TUI)
+    from builder_profile.stats_collector import refresh_stats_cache
+
+    claude_home = claude_dir.parent
+    print("Refreshing stats cache...", file=sys.stderr)
+    refresh_stats_cache(claude_home)
+
     # Step 1: Collect and aggregate retro JSONs
     from builder_profile.retro_collector import aggregate_retros, collect_retros
 
