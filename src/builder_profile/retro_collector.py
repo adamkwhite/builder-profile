@@ -38,6 +38,8 @@ def aggregate_retros(retros: list[dict]) -> BehavioralSignals:
     total_loc_hours = 0.0
     test_ratio_sum = 0.0
     test_ratio_count = 0
+    coverage_sum = 0.0
+    coverage_commits = 0
     feat_sum = 0.0
     fix_sum = 0.0
     total_feat_prs = 0
@@ -67,6 +69,11 @@ def aggregate_retros(retros: list[dict]) -> BehavioralSignals:
         if m.get("test_ratio") is not None:
             test_ratio_sum += m["test_ratio"]
             test_ratio_count += 1
+
+        if m.get("coverage_pct") is not None:
+            commits_this = m.get("commits", 1)
+            coverage_sum += m["coverage_pct"] * commits_this
+            coverage_commits += commits_this
 
         if m.get("feat_pct") is not None:
             feat_sum += m["feat_pct"]
@@ -130,6 +137,9 @@ def aggregate_retros(retros: list[dict]) -> BehavioralSignals:
 
     if test_ratio_count:
         sig.test_ratio_avg = test_ratio_sum / test_ratio_count
+
+    if coverage_commits:
+        sig.coverage_pct = coverage_sum / coverage_commits
 
     n = len(retros)
     if n:
