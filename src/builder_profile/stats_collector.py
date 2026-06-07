@@ -8,6 +8,7 @@ preserving cumulative session/message counts before JSONL files are pruned (~1 m
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sys
 from collections import defaultdict
@@ -57,10 +58,8 @@ def _save_cache(stats_path: Path, data: dict) -> None:
         tmp.replace(stats_path)
     except Exception as exc:
         print(f"  stats-cache: could not save ({exc})", file=sys.stderr)
-        try:
+        with contextlib.suppress(Exception):
             tmp.unlink(missing_ok=True)
-        except Exception:
-            pass
 
 
 def _iter_jsonl_since(projects_dir: Path, since_date: str | None):
@@ -69,12 +68,10 @@ def _iter_jsonl_since(projects_dir: Path, since_date: str | None):
         return
     cutoff_ts: float | None = None
     if since_date:
-        try:
+        with contextlib.suppress(ValueError):
             cutoff_ts = (
                 datetime.strptime(since_date, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()
             )
-        except ValueError:
-            pass
 
     for project_dir in projects_dir.iterdir():
         if not project_dir.is_dir():
@@ -205,9 +202,10 @@ def _merge_incremental(stats: dict, incremental: list[dict], today: str) -> None
         sessions_added += inc["session_count"]
         messages_added += inc["message_count"]
 
-        if inc["first_ts"] is not None:
-            if first_ts_global is None or inc["first_ts"] < first_ts_global:
-                first_ts_global = inc["first_ts"]
+        if inc["first_ts"] is not None and (
+            first_ts_global is None or inc["first_ts"] < first_ts_global
+        ):
+            first_ts_global = inc["first_ts"]
 
         if inc["first_ts"] is not None and inc["last_ts"] is not None:
             duration_ms = (inc["last_ts"] - inc["first_ts"]) * 1000
