@@ -155,6 +155,7 @@ def _fmt_metrics_table(sig: BehavioralSignals) -> list[str]:
         ("Commits", str(sig.total_commits)),
         ("Lines inserted", f"{sig.total_insertions:,}"),
         ("PRs merged", str(sig.total_prs)),
+        ("Features shipped", str(sig.features_shipped)),
         ("AI-assisted commits", str(sig.ai_assisted_commits)),
         ("Feature commits", f"{sig.feat_pct:.0%}"),
         ("Fix commits", f"{sig.fix_pct:.0%}"),
