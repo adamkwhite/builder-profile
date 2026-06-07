@@ -43,6 +43,18 @@ PLAN_SIGNALS = {
 }
 
 
+_NOISE = {"<<HARNESS", "<<AUTO", "<local-command", "<function_calls", "<parameter"}
+# Harness-generated prompt prefixes — not real user input
+_HARNESS_PREFIXES = (
+    "Summarize this coding session",
+    "Score this work stream",
+    "Write a narrative for this work stream",
+    "Write a short narrative",
+    "Generate insight cards",
+    "You are analyzing",
+)
+
+
 def extract_user_messages(sessions: list[Session]) -> list[str]:
     """Extract raw user message text stored in session.condensed_transcript."""
     messages = []
@@ -52,8 +64,11 @@ def extract_user_messages(sessions: list[Session]) -> list[str]:
         for line in s.condensed_transcript.splitlines():
             if line.startswith("USER: "):
                 msg = line[6:].strip()
-                _noise = {"<<HARNESS", "<<AUTO", "<local-command", "<function_calls", "<parameter"}
-                if msg and not any(n in msg for n in _noise):
+                if (
+                    msg
+                    and not any(n in msg for n in _NOISE)
+                    and not any(msg.startswith(p) for p in _HARNESS_PREFIXES)
+                ):
                     messages.append(msg)
     return messages
 
