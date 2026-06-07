@@ -144,6 +144,7 @@ class BehavioralSignals:
     test_ratio_avg: float = 0.0
     feat_pct: float = 0.0
     fix_pct: float = 0.0
+    features_shipped: int = 0
     # Models
     model_distribution: dict = field(default_factory=dict)
     # Agent usage

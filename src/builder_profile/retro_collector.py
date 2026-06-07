@@ -40,6 +40,7 @@ def aggregate_retros(retros: list[dict]) -> BehavioralSignals:
     test_ratio_count = 0
     feat_sum = 0.0
     fix_sum = 0.0
+    total_feat_prs = 0
     metric_count = 0
     hourly_combined: dict[str, int] = {}
     day_counts: dict[str, int] = {}
@@ -70,6 +71,8 @@ def aggregate_retros(retros: list[dict]) -> BehavioralSignals:
         if m.get("feat_pct") is not None:
             feat_sum += m["feat_pct"]
             fix_sum += m.get("fix_pct", 0)
+            prs_this = m.get("prs_merged", m.get("prs_referenced", 0))
+            total_feat_prs += round(m["feat_pct"] * prs_this)
 
         # Peak hour tracking via hourly_distribution
         hd = r.get("hourly_distribution", {})
@@ -132,6 +135,7 @@ def aggregate_retros(retros: list[dict]) -> BehavioralSignals:
     if n:
         sig.feat_pct = feat_sum / n
         sig.fix_pct = fix_sum / n
+        sig.features_shipped = total_feat_prs
 
     # Peak hour from combined distribution
     if hourly_combined:

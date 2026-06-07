@@ -64,6 +64,7 @@ def _format_signals(sig: BehavioralSignals) -> str:
         f"Late-night commits (after 10pm): {sig.late_night_pct:.0%}",
         f"Best shipping day: {sig.best_shipping_day}",
         f"Test ratio: {sig.test_ratio_avg:.0%}",
+        f"Features shipped: {sig.features_shipped} (feat: PRs, derived from commit prefixes)",
         f"Feature commits: {sig.feat_pct:.0%}, Fix commits: {sig.fix_pct:.0%}",
         f"AI-assisted commits: {sig.ai_assisted_commits}",
         f"Max parallel agents: {sig.max_parallel_agents}",
@@ -119,6 +120,23 @@ def _build_factual_cards(sig: BehavioralSignals) -> list[InsightCard]:
                 title=f"{sig.total_insertions // 1000}k lines",
                 body=body,
                 signal="total_insertions",
+            )
+        )
+
+    # Features shipped
+    if sig.features_shipped >= 5:
+        fix_count = round(sig.fix_pct * sig.total_prs) if sig.total_prs else 0
+        body = f"{sig.features_shipped} feature PRs out of {sig.total_prs} total"
+        if fix_count:
+            body += f", plus {fix_count} fixes."
+        else:
+            body += "."
+        cards.append(
+            InsightCard(
+                category="How much did you build?",
+                title=f"{sig.features_shipped} features shipped",
+                body=body,
+                signal="features_shipped",
             )
         )
 
