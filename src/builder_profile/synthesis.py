@@ -63,7 +63,13 @@ def _format_signals(sig: BehavioralSignals) -> str:
         f"Peak hour: {sig.peak_hour}:00",
         f"Late-night commits (after 10pm): {sig.late_night_pct:.0%}",
         f"Best shipping day: {sig.best_shipping_day}",
-        f"Test ratio: {sig.test_ratio_avg:.0%}",
+        f"Test coverage: {sig.coverage_pct:.0%}"
+        + (
+            " (weighted avg across projects with CI coverage data)"
+            if sig.coverage_pct
+            else " (no data)"
+        ),
+        f"Test LOC ratio: {sig.test_ratio_avg:.0%} (fraction of inserted lines that are test code)",
         f"Features shipped: {sig.features_shipped} (feat: PRs, derived from commit prefixes)",
         f"Feature commits: {sig.feat_pct:.0%}, Fix commits: {sig.fix_pct:.0%}",
         f"AI-assisted commits: {sig.ai_assisted_commits}",
@@ -204,14 +210,25 @@ def _build_factual_cards(sig: BehavioralSignals) -> list[InsightCard]:
             )
         )
 
-    # Test discipline
-    if sig.test_ratio_avg > 0.2:
-        pct = f"{sig.test_ratio_avg:.0%}"
+    # Test discipline — prefer real coverage over LOC ratio
+    if sig.coverage_pct > 0:
+        pct = f"{sig.coverage_pct:.0%}"
+        loc_pct = f"{sig.test_ratio_avg:.0%}"
         cards.append(
             InsightCard(
                 category="How disciplined is your testing?",
                 title=f"{pct} test coverage",
-                body=f"{pct} of your lines of code are tests. You ship tests with features, not after.",
+                body=f"{pct} average test coverage across projects with CI data. {loc_pct} of committed lines are test code.",
+                signal="coverage_pct",
+            )
+        )
+    elif sig.test_ratio_avg > 0.2:
+        pct = f"{sig.test_ratio_avg:.0%}"
+        cards.append(
+            InsightCard(
+                category="How disciplined is your testing?",
+                title=f"{pct} test LOC ratio",
+                body=f"{pct} of your committed lines are test code. You ship tests with features, not after.",
                 signal="test_ratio_avg",
             )
         )

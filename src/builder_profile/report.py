@@ -159,7 +159,8 @@ def _fmt_metrics_table(sig: BehavioralSignals) -> list[str]:
         ("AI-assisted commits", str(sig.ai_assisted_commits)),
         ("Feature commits", f"{sig.feat_pct:.0%}"),
         ("Fix commits", f"{sig.fix_pct:.0%}"),
-        ("Test ratio", f"{sig.test_ratio_avg:.0%}"),
+        ("Test coverage", f"{sig.coverage_pct:.0%}" if sig.coverage_pct else ""),
+        ("Test LOC ratio", f"{sig.test_ratio_avg:.0%}"),
         ("Date range", f"{sig.date_from} to {sig.date_to}"),
         ("Projects", str(sig.project_count)),
     ]
