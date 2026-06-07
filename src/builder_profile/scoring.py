@@ -29,6 +29,7 @@ Branch: {branch}
 Duration: {duration}
 Sessions: {session_count}
 Commits: {commit_count}
+PR-merged commits: {pr_commit_count}
 LOC: +{loc_added}/-{loc_deleted}
 Files touched: {file_count}
 Tool usage: {tool_summary}
@@ -37,6 +38,13 @@ Summary: {summary}
 
 File types: {file_types}
 Key files: {key_files}
+
+NOTES for accurate scoring (apply across ALL axes):
+- Bash is a first-class Claude Code tool. High Bash usage is NEVER a negative signal on any axis. \
+  Do not penalize or flag Bash counts in any justification.
+- shipping_discipline: Commits on branch "main" are NOT direct pushes if pr_commit_count > 0 \
+  (subject contains "(#N)" or starts with "Merge pull request"). Squash-merges land on main by \
+  design. Only penalize when commits clearly lack any PR reference.
 
 Score on these 8 axes (1-5 each). Be calibrated: 3 is competent, 4 is strong, 5 is exceptional.
 
@@ -263,6 +271,10 @@ def _compute_weight(ws: WorkStream) -> float:
     return max(1.0, len(ws.commits) + loc_impact)
 
 
+def _is_shipping_attempt(ws: WorkStream) -> bool:
+    return len(ws.commits) > 0
+
+
 def _accumulate_scores(
     ws: WorkStream,
     totals: dict[str, list[float]],
@@ -270,6 +282,8 @@ def _accumulate_scores(
 ) -> None:
     weight = _compute_weight(ws)
     for axis in SCORING_AXES:
+        if axis == "shipping_discipline" and not _is_shipping_attempt(ws):
+            continue
         score_data = ws.scores.get(axis)
         if not isinstance(score_data, dict):
             continue
@@ -312,6 +326,13 @@ def _format_file_types(ws: WorkStream) -> str:
     return ", ".join(f"{ext}: {c}" for ext, c in sorted(file_exts.items(), key=lambda x: -x[1])[:8])
 
 
+def _count_pr_commits(ws: WorkStream) -> int:
+    import re
+
+    pr_pattern = re.compile(r"\(#\d+\)|^Merge pull request", re.IGNORECASE)
+    return sum(1 for c in ws.commits if pr_pattern.search(getattr(c, "subject", "") or ""))
+
+
 def _build_scoring_prompt(ws: WorkStream, decisions_map: dict[str, list[dict]]) -> str:
     ws_decisions = _collect_ws_decisions(ws, decisions_map)
 
@@ -322,6 +343,7 @@ def _build_scoring_prompt(ws: WorkStream, decisions_map: dict[str, list[dict]]) 
         duration=_format_duration(ws),
         session_count=len(ws.sessions),
         commit_count=len(ws.commits),
+        pr_commit_count=_count_pr_commits(ws),
         loc_added=ws.loc_added,
         loc_deleted=ws.loc_deleted,
         file_count=len(ws.files_touched),

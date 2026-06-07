@@ -1,18 +1,16 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
-from builder_profile.models import ProfileData, Session, WorkStream
+from builder_profile.models import BehavioralProfile, BehavioralSignals
 
 
-def generate_report(
-    profile: ProfileData,
-    output_dir: Path,
-) -> tuple[Path | None, Path]:
+def generate_report(profile: BehavioralProfile, output_dir: Path) -> tuple[Path | None, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     json_path = output_dir / "profile.json"
@@ -27,230 +25,203 @@ def generate_report(
     return (pdf_path if success else None, json_path)
 
 
-def build_profile_data(
-    repos: list[dict],
-    interactive_streams: list[WorkStream],
-    automated_streams: list[WorkStream],
-    all_sessions: list[Session],
-    aggregate_scores: dict | None = None,
-    profile_narrative: str = "",
-) -> ProfileData:
-    all_times = []
-    for s in all_sessions:
-        if s.start_time:
-            all_times.append(s.start_time)
-        if s.end_time:
-            all_times.append(s.end_time)
-
-    date_from = min(all_times).isoformat() if all_times else ""
-    date_to = max(all_times).isoformat() if all_times else ""
-
-    velocity = _compute_velocity_timeline(all_sessions, interactive_streams)
-
-    return ProfileData(
-        generated_at=datetime.now(timezone.utc).isoformat(),
-        tool_version="0.2.0",
-        date_range={"from": date_from, "to": date_to},
-        repos=repos,
-        work_streams=interactive_streams,
-        automated_streams=automated_streams,
-        aggregate_scores=aggregate_scores or {},
-        profile_narrative=profile_narrative,
-        velocity_timeline=velocity,
-    )
-
-
-def _compute_velocity_timeline(sessions: list[Session], streams: list[WorkStream]) -> list[dict]:
-    weeks: dict[str, dict] = {}
-
-    for s in sessions:
-        if not s.start_time:
-            continue
-        week = s.start_time.strftime("%G-W%V")
-        if week not in weeks:
-            weeks[week] = {"week": week, "sessions": 0, "commits": 0, "loc": 0}
-        weeks[week]["sessions"] += 1
-
-    for ws in streams:
-        if not ws.start_time:
-            continue
-        week = ws.start_time.strftime("%G-W%V")
-        if week not in weeks:
-            weeks[week] = {"week": week, "sessions": 0, "commits": 0, "loc": 0}
-        weeks[week]["commits"] += len(ws.commits)
-        weeks[week]["loc"] += ws.loc_added + ws.loc_deleted
-
-    return sorted(weeks.values(), key=lambda w: w["week"])
-
-
-def _write_json(profile: ProfileData, path: Path):
+def _write_json(profile: BehavioralProfile, path: Path):
     def _serialize(obj):
-        if hasattr(obj, "__dataclass_fields__"):
-            d = {}
-            for f in obj.__dataclass_fields__:
-                val = getattr(obj, f)
-                d[f] = _serialize(val)
-            return d
+        if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+            return {f.name: _serialize(getattr(obj, f.name)) for f in dataclasses.fields(obj)}
         if isinstance(obj, list):
-            return [_serialize(item) for item in obj]
+            return [_serialize(i) for i in obj]
         if isinstance(obj, dict):
             return {k: _serialize(v) for k, v in obj.items()}
         if isinstance(obj, datetime):
             return obj.isoformat()
-        if isinstance(obj, set):
-            return sorted(obj)
         return obj
 
-    data = _serialize(profile)
-    path.write_text(json.dumps(data, indent=2, default=str))
+    path.write_text(json.dumps(_serialize(profile), indent=2))
     print(f"  JSON: {path}", file=sys.stderr)
 
 
-def _md_header(profile: ProfileData) -> list[str]:
-    date_from = profile.date_range.get("from", "")[:10]
-    date_to = profile.date_range.get("to", "")[:10]
-    total_sessions = sum(r.get("sessions", 0) for r in profile.repos)
-    total_commits = sum(r.get("commits", 0) for r in profile.repos)
-    return [
-        "---",
-        "geometry: margin=0.5in",
-        "title: Builder Profile",
-        f"date: {datetime.now().strftime('%Y-%m-%d')}",
-        "---",
-        "",
-        f"**Date range**: {date_from} to {date_to}",
-        f"**Repos analyzed**: {len(profile.repos)}",
-        f"**Total sessions**: {total_sessions} | **Total commits**: {total_commits}",
-        "",
-    ]
+def _fmt_signals_strip(sig: BehavioralSignals) -> list[str]:
+    parts = []
+    if sig.total_commits:
+        parts.append(f"**{sig.total_commits}** commits")
+    if sig.total_insertions:
+        parts.append(f"**{sig.total_insertions:,}** lines")
+    if sig.total_prs:
+        parts.append(f"**{sig.total_prs}** PRs")
+    if sig.total_sessions:
+        parts.append(f"**{sig.total_sessions}** sessions")
+    if sig.test_ratio_avg > 0:
+        parts.append(f"**{sig.test_ratio_avg:.0%}** test ratio")
+    if sig.peak_hour is not None:
+        parts.append(f"peak **{sig.peak_hour}:00**")
+    if sig.streak_days_max:
+        parts.append(f"**{sig.streak_days_max}d** streak")
+    if sig.date_from and sig.date_to:
+        return [" | ".join(parts), "", f"*{sig.date_from} to {sig.date_to}*", ""]
+    return [" | ".join(parts), ""]
 
 
-def _md_scores(profile: ProfileData) -> list[str]:
-    if not profile.aggregate_scores:
+def _fmt_card_grid(profile: BehavioralProfile) -> list[str]:
+    if not profile.insight_cards:
         return []
-    lines = [
-        "## Scoring Summary",
-        "",
-        "| Axis | Score | Justification |",
-        "|------|-------|---------------|",
-    ]
-    for axis, data in profile.aggregate_scores.items():
-        if not isinstance(data, dict):
-            continue
-        label = axis.replace("_", " ").title()
-        score = data.get("score", "?")
-        justification = data.get("justification", "")
-        lines.append(f"| {label} | {_score_bar(score)} {score}/5 | {justification} |")
-    lines.append("")
-    return lines
-
-
-def _md_projects(profile: ProfileData) -> list[str]:
-    lines = [
-        "## Projects",
-        "",
-        "| Project | Sessions | Commits | LOC +/- | Top Files |",
-        "|---------|----------|---------|---------|-----------|",
-    ]
-    for repo in profile.repos:
-        name = repo.get("name", "unknown")
-        loc = f"+{repo.get('loc_added', 0)}/-{repo.get('loc_deleted', 0)}"
-        top = ", ".join(repo.get("top_files", [])[:3])
-        lines.append(
-            f"| {name} | {repo.get('sessions', 0)} | {repo.get('commits', 0)} | {loc} | {top} |"
+    lines = ["## Insights", ""]
+    for card in profile.insight_cards:
+        lines.extend(
+            [
+                f"**{card.category}**",
+                "",
+                f"### {card.title}",
+                "",
+                card.body,
+                "",
+                "---",
+                "",
+            ]
         )
-    lines.append("")
     return lines
 
 
-def _md_work_stream(ws: WorkStream) -> list[str]:
-    start = ws.start_time.strftime("%Y-%m-%d") if ws.start_time else "?"
-    end = ws.end_time.strftime("%Y-%m-%d") if ws.end_time else "?"
-    lines = [
-        f"### {ws.title}",
-        "",
-        f"*{ws.project}* | {start} to {end} | "
-        f"{len(ws.sessions)} sessions | {len(ws.commits)} commits | "
-        f"+{ws.loc_added}/-{ws.loc_deleted} LOC",
+def _write_markdown(profile: BehavioralProfile, path: Path):
+    sig = profile.signals
+    archetype_desc = {
+        "The Architect": "Plans first, codifies decisions, and builds scaffolding that compounds.",
+        "Quality Guardian": "Prioritises test coverage, careful review, and defect prevention over speed.",
+        "Velocity Machine": "Ships fast with high LOC/hour, long streaks, and relentless output.",
+        "Night Owl": "Peak productivity after 10pm. Most commits and deepest work happen late at night.",
+    }
+
+    lines: list[str] = [
+        "---",
+        "geometry: margin=0.75in",
+        "fontsize: 14pt",
+        "title: 'Builder Profile'",
+        f"date: '{datetime.now().strftime('%Y-%m-%d')}'",
+        "---",
         "",
     ]
-    if ws.narrative:
-        lines.extend([ws.narrative, ""])
-    elif ws.summary:
-        lines.extend([ws.summary, ""])
-    if ws.scores:
-        score_parts = [
-            f"{axis.replace('_', ' ').title()}: {data.get('score', '?')}/5"
-            for axis, data in ws.scores.items()
-            if isinstance(data, dict)
-        ]
-        if score_parts:
-            lines.extend([f"**Scores:** {', '.join(score_parts)}", ""])
-    if ws.decisions:
-        lines.append("**Key decisions:**")
-        lines.extend(f"- {d}" for d in ws.decisions[:5])
-        lines.append("")
-    return lines
 
-
-def _md_automation(profile: ProfileData) -> list[str]:
-    if not profile.automated_streams:
-        return []
-    total_auto = sum(len(ws.sessions) for ws in profile.automated_streams)
-    total_auto_commits = sum(len(ws.commits) for ws in profile.automated_streams)
-    lines = [
-        "## Automation & CI",
-        "",
-        f"**{total_auto} automated sessions** across "
-        f"{len(profile.automated_streams)} work streams, "
-        f"producing {total_auto_commits} commits.",
-        "",
-    ]
-    for ws in profile.automated_streams[:10]:
-        start = ws.start_time.strftime("%Y-%m-%d") if ws.start_time else "?"
-        lines.append(
-            f"- **{ws.title}** ({start}) - "
-            f"{len(ws.sessions)} sessions, +{ws.loc_added}/-{ws.loc_deleted} LOC"
+    # Page 1: archetype + metrics strip
+    if profile.archetype:
+        lines.extend(
+            [
+                f"# {profile.archetype}",
+                "",
+            ]
         )
-    lines.append("")
-    return lines
+        desc = archetype_desc.get(profile.archetype, "")
+        if profile.secondary_archetypes:
+            desc += f" Also: {', '.join(profile.secondary_archetypes)}."
+        if desc:
+            lines.extend([f"*{desc}*", ""])
 
+    lines.extend(_fmt_signals_strip(sig))
 
-def _write_markdown(profile: ProfileData, path: Path):
-    lines = _md_header(profile)
+    # Page 2: insight cards
+    lines.extend(["\\newpage", ""])
+    lines.extend(_fmt_card_grid(profile))
 
-    if profile.profile_narrative:
-        lines.extend(["## Builder Profile", "", profile.profile_narrative, ""])
+    # Page 3: portrait + growth edge (only if LLM content is present)
+    if profile.portrait or profile.growth_edge:
+        lines.extend(["\\newpage", ""])
+        if profile.portrait:
+            lines.extend(["## Portrait", "", profile.portrait, ""])
+        if profile.growth_edge:
+            lines.extend(["## Growth Edge", "", profile.growth_edge, ""])
 
-    lines.extend(_md_scores(profile))
-    lines.extend(_md_projects(profile))
+    # Metrics table
+    lines.extend(["\\newpage", "", "## Metrics", ""])
+    lines.extend(_fmt_metrics_table(sig))
 
-    if profile.work_streams:
-        lines.extend(["## Work Streams", ""])
-        for ws in profile.work_streams:
-            lines.extend(_md_work_stream(ws))
-
-    lines.extend(_md_automation(profile))
-
-    if profile.velocity_timeline:
-        lines.extend(["## Velocity", ""])
-        lines.extend(_ascii_velocity_chart(profile.velocity_timeline[-16:]))
-        lines.append("")
-
-    lines.extend(["---", f"*Generated by builder-profile v{profile.tool_version}*"])
+    lines.extend(["", "---", "*Generated by builder-profile v2*"])
     path.write_text("\n".join(lines))
+    print(f"  MD:   {path}", file=sys.stderr)
+
+
+def _fmt_metrics_table(sig: BehavioralSignals) -> list[str]:
+    _skip = {"0", "0 min", "0.0 words", "0%", " to ", "0 days"}
+
+    def table(rows: list[tuple[str, str]]) -> list[str]:
+        out = ["| | |", "|---|---|"]
+        for label, value in rows:
+            if value and value not in _skip:
+                out.append(f"| {label} | {value} |")
+        return out if len(out) > 2 else []
+
+    lines: list[str] = []
+
+    # Output
+    output_rows = [
+        ("Commits", str(sig.total_commits)),
+        ("Lines inserted", f"{sig.total_insertions:,}"),
+        ("PRs merged", str(sig.total_prs)),
+        ("AI-assisted commits", str(sig.ai_assisted_commits)),
+        ("Feature commits", f"{sig.feat_pct:.0%}"),
+        ("Fix commits", f"{sig.fix_pct:.0%}"),
+        ("Test ratio", f"{sig.test_ratio_avg:.0%}"),
+        ("Date range", f"{sig.date_from} to {sig.date_to}"),
+        ("Projects", str(sig.project_count)),
+    ]
+    t = table(output_rows)
+    if t:
+        lines += ["**Output**", ""] + t + [""]
+
+    # Sessions
+    session_rows = [
+        ("Total sessions", str(sig.total_sessions)),
+        ("Deep (>50 min)", str(sig.deep_session_count)),
+        ("Micro (<20 min)", str(sig.micro_session_count)),
+        ("Avg session", f"{sig.avg_session_minutes:.0f} min"),
+        ("Longest session", f"{sig.longest_session_minutes} min"),
+        ("LOC/session-hour", f"{sig.loc_per_session_hour:.0f}"),
+        ("Wrapups logged", str(sig.wrapup_count)),
+        ("Planning sessions", str(sig.planning_session_count)),
+    ]
+    t = table(session_rows)
+    if t:
+        lines += ["**Sessions**", ""] + t + [""]
+
+    # Timing
+    timing_rows = [
+        ("Peak hour", f"{sig.peak_hour}:00" if sig.peak_hour is not None else ""),
+        ("Late-night commits", f"{sig.late_night_pct:.0%}"),
+        ("Best shipping day", sig.best_shipping_day),
+        ("Max streak", f"{sig.streak_days_max} days"),
+    ]
+    t = table(timing_rows)
+    if t:
+        lines += ["**Timing**", ""] + t + [""]
+
+    # Agent usage
+    agent_rows = [
+        ("Max parallel agents", str(sig.max_parallel_agents)),
+    ]
+    if sig.model_distribution:
+        top = max(sig.model_distribution, key=sig.model_distribution.__getitem__)
+        agent_rows.append(("Primary model", f"{top} ({sig.model_distribution[top]:.0%})"))
+    t = table(agent_rows)
+    if t:
+        lines += ["**Agents**", ""] + t + [""]
+
+    # Steering
+    steering_rows = [
+        ("Avg prompt length", f"{sig.avg_prompt_words:.1f} words"),
+        ("Correction rate", f"{sig.correction_rate:.0%}"),
+        ("Question ratio", f"{sig.question_ratio:.0%}"),
+        ("Politeness count", str(sig.politeness_count)),
+        ("Plan-mode sessions", f"{sig.plan_mode_pct:.0%}"),
+    ]
+    t = table(steering_rows)
+    if t:
+        lines += ["**Steering**", ""] + t + [""]
+
+    return lines
 
 
 def _render_pdf(md_path: Path, pdf_path: Path) -> bool:
     try:
         result = subprocess.run(
-            [
-                "pandoc",
-                str(md_path),
-                "-o",
-                str(pdf_path),
-                "--pdf-engine=xelatex",
-            ],
+            ["pandoc", str(md_path), "-o", str(pdf_path), "--pdf-engine=xelatex"],
             capture_output=True,
             text=True,
             timeout=60,
@@ -258,50 +229,11 @@ def _render_pdf(md_path: Path, pdf_path: Path) -> bool:
         if result.returncode == 0:
             print(f"  PDF:  {pdf_path}", file=sys.stderr)
             return True
-        print(f"  Warning: pandoc failed: {result.stderr[:200]}", file=sys.stderr)
-        print(f"  Markdown report available at: {md_path}", file=sys.stderr)
+        print(f"  Warning: pandoc failed: {result.stderr[:300]}", file=sys.stderr)
         return False
     except FileNotFoundError:
-        print(
-            "  Warning: pandoc not found. Install pandoc + texlive for PDF output.", file=sys.stderr
-        )
-        print(f"  Markdown report available at: {md_path}", file=sys.stderr)
+        print("  Warning: pandoc not found. Markdown + JSON still generated.", file=sys.stderr)
         return False
     except subprocess.TimeoutExpired:
         print("  Warning: pandoc timed out", file=sys.stderr)
         return False
-
-
-def _score_bar(score) -> str:
-    try:
-        n = int(float(score))
-    except (ValueError, TypeError):
-        return ""
-    filled = min(n, 5)
-    return "#" * filled + "-" * (5 - filled)
-
-
-def _ascii_velocity_chart(timeline: list[dict]) -> list[str]:
-    if not timeline:
-        return []
-
-    max_sessions = max((w.get("sessions", 0) for w in timeline), default=1) or 1
-    max_commits = max((w.get("commits", 0) for w in timeline), default=1) or 1
-    bar_width = 30
-
-    lines = ["```"]
-    lines.append(f"{'Week':<10} {'Sessions':<{bar_width + 6}} {'Commits'}")
-    lines.append(f"{'----':<10} {'--------':<{bar_width + 6}} {'-------'}")
-
-    for w in timeline:
-        week = w.get("week", "")
-        sess = w.get("sessions", 0)
-        commits = w.get("commits", 0)
-        sess_bars = int(sess / max_sessions * bar_width)
-        commit_bars = int(commits / max_commits * bar_width)
-        sess_bar = "#" * sess_bars + " " * (bar_width - sess_bars)
-        commit_bar = "#" * commit_bars
-        lines.append(f"{week:<10} {sess_bar} {sess:>3}  {commit_bar} {commits}")
-
-    lines.append("```")
-    return lines
