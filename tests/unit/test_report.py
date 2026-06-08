@@ -113,10 +113,11 @@ class TestFmtCardGrid:
         lines = _fmt_card_grid(profile)
         assert lines == []
 
-    def test_each_card_has_separator(self):
+    def test_each_card_has_italic_category(self):
         profile = _make_profile()
         lines = _fmt_card_grid(profile)
-        assert lines.count("---") == 2
+        italic_lines = [ln for ln in lines if ln.startswith("*") and ln.endswith("*")]
+        assert len(italic_lines) == 2
 
 
 class TestFmtMetricsTable:
@@ -124,8 +125,8 @@ class TestFmtMetricsTable:
         sig = _make_sig()
         lines = _fmt_metrics_table(sig)
         combined = "\n".join(lines)
-        assert "| | |" in combined
-        assert "|---|---|" in combined
+        assert "| **Output** | |" in combined
+        assert "|:---|---:|" in combined
 
     def test_zero_rows_excluded(self):
         sig = _make_sig(max_parallel_agents=0, politeness_count=0)
