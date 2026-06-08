@@ -116,7 +116,7 @@ class TestFmtCardGrid:
     def test_each_card_has_italic_category(self):
         profile = _make_profile()
         lines = _fmt_card_grid(profile)
-        italic_lines = [l for l in lines if l.startswith("*") and l.endswith("*")]
+        italic_lines = [ln for ln in lines if ln.startswith("*") and ln.endswith("*")]
         assert len(italic_lines) == 2
 
 
