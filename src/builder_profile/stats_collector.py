@@ -20,6 +20,11 @@ _EXPECTED_VERSION = 3
 
 _MESSAGE_TYPES = {"user", "assistant"}
 
+# Sessions longer than this are resumed sessions, not real continuous work.
+# Claude Code --resume appends to the same JSONL across days, making first-to-last
+# span look enormous. 8 hours is a generous upper bound for any real session.
+_MAX_SESSION_MS = 8 * 3600 * 1000
+
 
 def _load_cache(stats_path: Path) -> dict:
     if not stats_path.exists():
@@ -209,7 +214,9 @@ def _merge_incremental(stats: dict, incremental: list[dict], today: str) -> None
 
         if inc["first_ts"] is not None and inc["last_ts"] is not None:
             duration_ms = (inc["last_ts"] - inc["first_ts"]) * 1000
-            if longest is None or duration_ms > longest.get("duration", 0):
+            if duration_ms <= _MAX_SESSION_MS and (
+                longest is None or duration_ms > longest.get("duration", 0)
+            ):
                 longest = {"duration": duration_ms}
 
         for day, counts in inc["daily"].items():
@@ -260,6 +267,12 @@ def refresh_stats_cache(claude_home: Path) -> dict:
     today = date.today().isoformat()
 
     stats = _load_cache(stats_path)
+
+    # Clear any pre-existing longestSession that exceeds the cap (e.g. resumed sessions).
+    existing = stats.get("longestSession") or {}
+    if existing.get("duration", 0) > _MAX_SESSION_MS:
+        stats["longestSession"] = None
+
     last_computed = stats.get("lastComputedDate") or ""
 
     if last_computed == today:

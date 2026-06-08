@@ -2,12 +2,27 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
 from builder_profile.models import BehavioralProfile, BehavioralSignals
+
+# LaTeX header injected via pandoc -H: accent colours, tighter spacing, clean tables.
+_LATEX_HEADER = r"""\usepackage{xcolor}
+\definecolor{accent}{RGB}{37,99,235}
+\usepackage{titlesec}
+\titleformat{\section}{\large\bfseries\color{accent}}{}{0em}{}[\vspace{-4pt}\rule{\linewidth}{0.5pt}\vspace{2pt}]
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{accent}}{}{0em}{}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt plus 2pt}
+\renewcommand{\arraystretch}{1.2}
+\usepackage{booktabs}
+"""
 
 
 def generate_report(profile: BehavioralProfile, output_dir: Path) -> tuple[Path | None, Path]:
@@ -69,13 +84,11 @@ def _fmt_card_grid(profile: BehavioralProfile) -> list[str]:
     for card in profile.insight_cards:
         lines.extend(
             [
-                f"**{card.category}**",
+                f"*{card.category}*",
                 "",
                 f"### {card.title}",
                 "",
                 card.body,
-                "",
-                "---",
                 "",
             ]
         )
@@ -94,7 +107,7 @@ def _write_markdown(profile: BehavioralProfile, path: Path):
     lines: list[str] = [
         "---",
         "geometry: margin=0.75in",
-        "fontsize: 14pt",
+        "fontsize: 11pt",
         "title: 'Builder Profile'",
         f"date: '{datetime.now().strftime('%Y-%m-%d')}'",
         "---",
@@ -141,16 +154,16 @@ def _write_markdown(profile: BehavioralProfile, path: Path):
 def _fmt_metrics_table(sig: BehavioralSignals) -> list[str]:
     _skip = {"0", "0 min", "0.0 words", "0%", " to ", "0 days"}
 
-    def table(rows: list[tuple[str, str]]) -> list[str]:
-        out = ["| | |", "|---|---|"]
+    def table(section: str, rows: list[tuple[str, str]]) -> list[str]:
+        # Use section name as visible header column so tables aren't headless
+        out = [f"| **{section}** | |", "|:---|---:|"]
         for label, value in rows:
             if value and value not in _skip:
                 out.append(f"| {label} | {value} |")
-        return out if len(out) > 2 else []
+        return out + [""] if len(out) > 2 else []
 
     lines: list[str] = []
 
-    # Output
     output_rows = [
         ("Commits", str(sig.total_commits)),
         ("Lines inserted", f"{sig.total_insertions:,}"),
@@ -164,11 +177,10 @@ def _fmt_metrics_table(sig: BehavioralSignals) -> list[str]:
         ("Date range", f"{sig.date_from} to {sig.date_to}"),
         ("Projects", str(sig.project_count)),
     ]
-    t = table(output_rows)
+    t = table("Output", output_rows)
     if t:
-        lines += ["**Output**", ""] + t + [""]
+        lines += t
 
-    # Sessions
     session_rows = [
         ("Total sessions", str(sig.total_sessions)),
         ("Deep (>50 min)", str(sig.deep_session_count)),
@@ -179,33 +191,30 @@ def _fmt_metrics_table(sig: BehavioralSignals) -> list[str]:
         ("Wrapups logged", str(sig.wrapup_count)),
         ("Planning sessions", str(sig.planning_session_count)),
     ]
-    t = table(session_rows)
+    t = table("Sessions", session_rows)
     if t:
-        lines += ["**Sessions**", ""] + t + [""]
+        lines += t
 
-    # Timing
     timing_rows = [
         ("Peak hour", f"{sig.peak_hour}:00" if sig.peak_hour is not None else ""),
         ("Late-night commits", f"{sig.late_night_pct:.0%}"),
         ("Best shipping day", sig.best_shipping_day),
         ("Max streak", f"{sig.streak_days_max} days"),
     ]
-    t = table(timing_rows)
+    t = table("Timing", timing_rows)
     if t:
-        lines += ["**Timing**", ""] + t + [""]
+        lines += t
 
-    # Agent usage
     agent_rows = [
         ("Max parallel agents", str(sig.max_parallel_agents)),
     ]
     if sig.model_distribution:
         top = max(sig.model_distribution, key=sig.model_distribution.__getitem__)
         agent_rows.append(("Primary model", f"{top} ({sig.model_distribution[top]:.0%})"))
-    t = table(agent_rows)
+    t = table("Agents", agent_rows)
     if t:
-        lines += ["**Agents**", ""] + t + [""]
+        lines += t
 
-    # Steering
     steering_rows = [
         ("Avg prompt length", f"{sig.avg_prompt_words:.1f} words"),
         ("Correction rate", f"{sig.correction_rate:.0%}"),
@@ -213,20 +222,41 @@ def _fmt_metrics_table(sig: BehavioralSignals) -> list[str]:
         ("Politeness count", str(sig.politeness_count)),
         ("Plan-mode sessions", f"{sig.plan_mode_pct:.0%}"),
     ]
-    t = table(steering_rows)
+    t = table("Steering", steering_rows)
     if t:
-        lines += ["**Steering**", ""] + t + [""]
+        lines += t
 
     return lines
 
 
 def _render_pdf(md_path: Path, pdf_path: Path) -> bool:
+    fd, header_path = tempfile.mkstemp(suffix=".tex")
     try:
+        with os.fdopen(fd, "w") as f:
+            f.write(_LATEX_HEADER)
         result = subprocess.run(
-            ["pandoc", str(md_path), "-o", str(pdf_path), "--pdf-engine=xelatex"],
+            [
+                "pandoc",
+                str(md_path),
+                "-o",
+                str(pdf_path),
+                "--pdf-engine=xelatex",
+                "-H",
+                header_path,
+                "-V",
+                "mainfont=DejaVu Serif",
+                "-V",
+                "sansfont=DejaVu Sans",
+                "-V",
+                "monofont=DejaVu Sans Mono",
+                "-V",
+                "colorlinks=true",
+                "-V",
+                "linkcolor=accent",
+            ],
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=90,
         )
         if result.returncode == 0:
             print(f"  PDF:  {pdf_path}", file=sys.stderr)
@@ -239,3 +269,5 @@ def _render_pdf(md_path: Path, pdf_path: Path) -> bool:
     except subprocess.TimeoutExpired:
         print("  Warning: pandoc timed out", file=sys.stderr)
         return False
+    finally:
+        os.unlink(header_path)
