@@ -146,6 +146,18 @@ def main(argv: list[str] | None = None):
 
     sample_messages = extract_user_messages(all_sessions)
 
+    # Step 2b: Collect git history and derive git-native signals, then merge
+    from builder_profile.aggregate_commits import aggregate_commits, merge_signals
+    from builder_profile.git_collector import collect_git_history
+
+    print("Collecting git history...", file=sys.stderr)
+    all_commits: list = []
+    for manifest in manifests:
+        all_commits.extend(collect_git_history(manifest.real_path, since_epoch))
+    print(f"  {len(all_commits)} commits collected", file=sys.stderr)
+    git_sig = aggregate_commits(all_commits)
+    sig = merge_signals(git_sig, sig)
+
     # Step 3: Enrich from claude-memory (optional, graceful if absent)
     from builder_profile.memory_collector import collect_from_memory, enrich_signals_from_memory
 
