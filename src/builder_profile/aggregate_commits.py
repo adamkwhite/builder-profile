@@ -62,6 +62,10 @@ def aggregate_commits(commits: list[Commit]) -> BehavioralSignals:
     sig.total_commits = len(mine)
     sig.total_insertions = sum(fc.added for c in mine for fc in c.files)
 
+    # ── Date range (mirrors aggregate_retros' YYYY-MM-DD format) ──────────────
+    sig.date_from = min(c.date for c in mine).date().isoformat()
+    sig.date_to = max(c.date for c in mine).date().isoformat()
+
     # ── Commit-type fractions ─────────────────────────────────────────────────
     feat_count = sum(1 for c in mine if _FEAT_RE.match(c.subject))
     fix_count = sum(1 for c in mine if _FIX_RE.match(c.subject))

@@ -96,6 +96,29 @@ class TestVolumeSignals:
 
 
 # ---------------------------------------------------------------------------
+# Date range
+# ---------------------------------------------------------------------------
+
+
+class TestDateRange:
+    def test_date_from_to_span_earliest_and_latest_commit(self):
+        commits = [
+            _commit("chore: middle", _dt(2026, 3, 15)),
+            _commit("chore: earliest", _dt(2026, 1, 2)),
+            _commit("chore: latest", _dt(2026, 5, 20)),
+        ]
+        sig = aggregate_commits(commits)
+        assert sig.date_from == "2026-01-02"
+        assert sig.date_to == "2026-05-20"
+
+    def test_date_range_blank_when_no_mine_commits(self):
+        commits = [_commit("chore: theirs", _dt(2026, 1, 1), is_mine=False)]
+        sig = aggregate_commits(commits)
+        assert sig.date_from == ""
+        assert sig.date_to == ""
+
+
+# ---------------------------------------------------------------------------
 # feat/fix classification
 # ---------------------------------------------------------------------------
 
@@ -408,6 +431,20 @@ class TestMergeSignals:
         assert merged.total_commits == 60
         assert merged.total_prs == 12
         assert merged.feat_pct == pytest.approx(0.5)
+
+    def test_retro_date_range_wins_over_git(self):
+        git_sig = BehavioralSignals(date_from="2026-01-02", date_to="2026-05-20")
+        retro_sig = BehavioralSignals(date_from="2025-11-01", date_to="2026-06-01")
+        merged = merge_signals(git_sig, retro_sig)
+        assert merged.date_from == "2025-11-01"
+        assert merged.date_to == "2026-06-01"
+
+    def test_git_date_range_fills_gap_when_retro_blank(self):
+        git_sig = BehavioralSignals(date_from="2026-01-02", date_to="2026-05-20")
+        retro_sig = BehavioralSignals()  # blank date range
+        merged = merge_signals(git_sig, retro_sig)
+        assert merged.date_from == "2026-01-02"
+        assert merged.date_to == "2026-05-20"
 
     def test_coverage_pct_comes_from_retro(self):
         git_sig = BehavioralSignals(coverage_pct=0.0)
