@@ -1,95 +1,117 @@
-# Project Template
+# builder-profile
 
-AI/ML project template with pre-configured tooling for Python development.
+**Your developer personality, computed on your own machine.**
 
-## Requirements
+You may have seen [Paxel](https://paxel.ycombinator.com), YC's "builder personality" page
+that turns your coding activity into a shareable profile with archetype cards ("Night Owl,"
+"Velocity Machine," and so on). `builder-profile` does the same kind of thing, with two big
+differences: it runs entirely on your own computer, and it builds the profile from your actual
+Claude Code history and git commits instead of asking you to connect accounts to a website.
 
-- Python 3.13+
-- Git
-- GitHub CLI (`gh`) - for repository setup
+## What you get
 
-## Quick Start
+A one-page profile that reads like a personality card deck for how you build software:
 
-### 1. Install Dependencies
+- An **archetype** (The Architect, Quality Guardian, Velocity Machine, Night Owl) plus a
+  written portrait of how you work.
+- **Insight cards** with real numbers from your own history: when you're most productive, how
+  much you shipped, your longest agent run, how often you change course mid-task, how polite
+  you are to your AI, your most cryptic one-line prompt, your test discipline, and more.
+- A **growth edge** suggestion grounded in your actual patterns, not generic advice.
+
+Output is a clean Markdown, PDF, or JSON file you can keep, print, or share.
+
+## How it works, in three sentences
+
+It reads the session logs Claude Code already keeps on your machine and your local git history.
+It measures concrete signals from them (commit timing, volume, test ratio, prompt style, how
+many agents you run at once). Then it has one AI call write the narrative on top of those
+measured facts, with a strict rule that every claim has to trace back to a real number.
+
+## Why use it instead of the Paxel page
+
+- **Private by default.** Nothing leaves your computer. There's a fully offline mode
+  (`--no-llm`) that produces all the factual cards with zero AI calls and zero network. The only
+  thing that ever goes out is the optional narrative-writing step, and only if you turn it on.
+- **Built from your real work,** not a survey or a connected feed. The numbers are your actual
+  commits and sessions.
+- **It's yours to keep.** A local file, not a profile on someone else's site that can change or
+  disappear.
+- **Free and open.** MIT-licensed CLI. No account, no signup.
+
+The tradeoff: it's a command-line tool you run yourself, not a click-and-share webpage. If you
+use Claude Code and are comfortable running one command in a terminal, you get a richer, private
+version of the same idea.
+
+## Install
+
+Requires Python 3.10+ and Claude Code session history on your machine.
 
 ```bash
-# Create and activate virtual environment
-python3.13 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -e .
 
-# Install project dependencies
-pip install -r requirements.txt
+# Optional: PDF output needs pandoc (Markdown + JSON work without it)
+#   macOS:  brew install pandoc
+#   Ubuntu: sudo apt install pandoc texlive-latex-base
+```
 
-# Install development dependencies
+## Usage
+
+```bash
+# Fully offline, factual cards only, zero AI calls and zero network
+builder-profile --no-llm --output ./output
+
+# Last 2 weeks, with the AI-written narrative (uses your local `claude` CLI)
+builder-profile --since 2w --output ./output
+
+# View a profile you generated earlier, in the terminal
+builder-profile --view ./output/profile.json
+```
+
+It scans the history Claude Code already saved under `~/.claude/projects`, so there is nothing
+to set up or connect.
+
+### Options
+
+| Flag | What it does |
+|---|---|
+| `--since <window>` | Only include activity since `6h`, `7d`, `2w`, `1m`, or a `YYYY-MM-DD` date |
+| `--output <dir>` | Where to write the report (default `./output`) |
+| `--no-llm` | Skip the AI narrative. factual cards and metrics only, fully offline |
+| `--api-mode` | Use the Anthropic API directly instead of the `claude` CLI (needs `ANTHROPIC_API_KEY`) |
+| `--model <name>` | Model for the narrative step (default: Sonnet via `claude -p`) |
+| `--code-dir <dir>` | Root directory to scan for git repos / retro snapshots (default `~/Code`) |
+| `--claude-dir <dir>` | Path to Claude projects directory (default `~/.claude/projects`) |
+| `--clean` | Clear the local result cache before running |
+| `--view <json>` | Render a previously generated `profile.json` in the terminal |
+
+## How the AI step works (and how to skip it)
+
+The profile is two layers. The **factual layer** (every number and most cards) is computed in
+plain Python from your data with no AI involved. it always renders, even with `--no-llm`. The
+**narrative layer** (archetype choice, portrait, growth edge) is a single AI call that writes
+prose constrained to the measured facts. Run with `--no-llm` and nothing ever leaves your
+machine; run without it and only that one synthesis prompt is sent, via either your local
+`claude` CLI or the Anthropic API.
+
+## A note on completeness
+
+All the headline numbers (commits, lines, features, streaks, timing, test ratio, PRs, date
+range) are derived straight from your local **git history**, so any Claude Code user gets a full
+profile out of the box. The one number that needs an external source is real CI test coverage,
+which stays optional and is only filled in if your projects publish coverage data.
+
+## Development
+
+```bash
 pip install -e ".[dev]"
+pytest tests/ -v          # run the test suite
+ruff check src/ tests/    # lint
+ruff format src/ tests/   # format
 ```
 
-### 2. Set Up Pre-commit Hooks (Required)
+See `docs/git-native-signals.md` for the design of the git-native signal pipeline.
 
-Pre-commit hooks automatically format and lint your code before each commit, ensuring code quality.
+## License
 
-```bash
-# Install pre-commit
-pip install pre-commit
-
-# Enable pre-commit hooks
-pre-commit install
-
-# (Optional) Run against all files to test
-pre-commit run --all-files
-```
-
-**What pre-commit does:**
-- Auto-fixes formatting issues with Ruff
-- Sorts imports automatically
-- Removes trailing whitespace
-- Validates YAML/JSON files
-- Type checks with mypy
-- Security scans with Bandit
-
-**Your workflow:**
-1. Write code (Claude or manual)
-2. Run `git commit`
-3. Pre-commit auto-fixes formatting
-4. Commit succeeds with clean code
-
-### 3. Customize Your Project
-
-Use the automated setup script to customize this template for your project:
-
-```bash
-# Interactive mode - prompts for details
-./scripts/setup-repo.sh
-
-# Preview changes without applying
-./scripts/setup-repo.sh --dry-run
-
-# Non-interactive mode
-./scripts/setup-repo.sh --name my_agent --author "Your Name" \
-  --email your.email@example.com --github-user yourusername
-```
-
-The script will:
-- Rename `src/your_agent` to `src/{your_project_name}`
-- Update `pyproject.toml` with your details
-- Update all Python imports
-- Configure GitHub repository settings
-
-## Setup
-
-### SonarCloud Integration
-
-This template includes SonarCloud for continuous code quality and security analysis.
-
-**Initial Setup:**
-1. Go to [SonarCloud](https://sonarcloud.io) and sign in with GitHub
-2. Import your repository
-3. Add `SONAR_TOKEN` to your repository secrets:
-   - Go to repository Settings > Secrets and variables > Actions
-   - Add new secret: `SONAR_TOKEN` (get from SonarCloud account settings)
-4. Update `sonar-project.properties`:
-   - Set `sonar.projectKey` to your project key
-   - Set `sonar.organization` to your SonarCloud organization
-5. Push to trigger the first analysis
-
-The SonarCloud workflow will run on every push and pull request to analyze code quality, security vulnerabilities, and test coverage.
+MIT
