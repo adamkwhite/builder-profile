@@ -18,6 +18,9 @@ _LATEX_HEADER = r"""\usepackage{xcolor}
 \titleformat{\section}{\large\bfseries\color{accent}}{}{0em}{}[\vspace{-4pt}\rule{\linewidth}{0.5pt}\vspace{2pt}]
 \titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
 \titleformat{\subsubsection}{\normalsize\bfseries\color{accent}}{}{0em}{}
+% Insight-card questions are subsubsections: generous space above (separates
+% cards) and tight space below (binds the question to its answer + body).
+\titlespacing*{\subsubsection}{0pt}{13pt plus 3pt minus 2pt}{2pt}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{5pt plus 2pt}
 \renewcommand{\arraystretch}{1.05}
@@ -82,11 +85,13 @@ def _fmt_card_grid(profile: BehavioralProfile) -> list[str]:
         return []
     lines = ["## Insights", ""]
     for card in profile.insight_cards:
+        # Question is the accent heading (it stands out and marks the card start);
+        # the answer is bold beneath it, then the explanation.
         lines.extend(
             [
-                f"*{card.category}*",
+                f"### {card.category}",
                 "",
-                f"### {card.title}",
+                f"**{card.title}**",
                 "",
                 card.body,
                 "",
