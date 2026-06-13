@@ -21,19 +21,21 @@ def correlate_sessions_to_commits(
 
 
 def _match_session(session: Session, commits: list[Commit]) -> list[str]:
+    """Return SHAs of commits that fall within this session's time window.
+
+    Correlation is purely time-based (window_start..window_end).  Git commits
+    are reachable from many branches, so there is no reliable way to scope
+    by branch without heuristics; the previous branch-filter expression was
+    always truthy and has been removed.  Callers that need branch scoping
+    should post-filter the results themselves.
+    """
     if not session.start_time or not session.end_time:
         return []
 
     window_start = session.start_time - WINDOW_BEFORE
     window_end = session.end_time + WINDOW_AFTER
 
-    return [
-        c.sha
-        for c in commits
-        if c.is_mine
-        and window_start <= c.date <= window_end
-        and (session.branch and c.sha or not session.branch)
-    ]
+    return [c.sha for c in commits if c.is_mine and window_start <= c.date <= window_end]
 
 
 def compute_session_stats(

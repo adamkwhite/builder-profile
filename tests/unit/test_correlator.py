@@ -57,6 +57,41 @@ class TestCorrelateSessionsToCommits:
         assert result["s1"] == []
 
 
+class TestBranchNotUsedForCorrelation:
+    def test_commits_matched_by_time_regardless_of_session_branch(self):
+        # Two sessions on different branches overlap the same time window.
+        # Because correlation is time-only (Commit has no branch field),
+        # both sessions claim the same commit.  This is the documented
+        # behavior: callers that need branch scoping must post-filter.
+        session_main = _make_session(
+            "s_main", "2026-05-01T10:00:00+00:00", "2026-05-01T11:00:00+00:00", branch="main"
+        )
+        session_feat = _make_session(
+            "s_feat",
+            "2026-05-01T10:00:00+00:00",
+            "2026-05-01T11:00:00+00:00",
+            branch="feature/foo",
+        )
+        commit = _make_commit("aaa", "2026-05-01T10:30:00+00:00")
+
+        result = correlate_sessions_to_commits([session_main, session_feat], [commit])
+
+        # Both sessions receive the commit — branch is not consulted.
+        assert result["s_main"] == ["aaa"]
+        assert result["s_feat"] == ["aaa"]
+
+    def test_no_branch_session_still_matches_by_time(self):
+        # A session with an empty branch still correlates commits by time.
+        session = _make_session(
+            "s1", "2026-05-01T10:00:00+00:00", "2026-05-01T11:00:00+00:00", branch=""
+        )
+        commit = _make_commit("bbb", "2026-05-01T10:45:00+00:00")
+
+        result = correlate_sessions_to_commits([session], [commit])
+
+        assert result["s1"] == ["bbb"]
+
+
 class TestComputeSessionStats:
     def test_aggregates_file_changes(self):
         session = _make_session("s1", "2026-05-01T10:00:00+00:00", "2026-05-01T11:00:00+00:00")
