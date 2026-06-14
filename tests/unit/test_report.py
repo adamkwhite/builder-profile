@@ -148,6 +148,33 @@ class TestArchetypeScores:
         assert orch > none
         assert orch >= 9.0
 
+    def test_firefighter_needs_fix_to_dominate(self):
+        dominant = archetype_scores(_make_sig(fix_pct=0.5, feat_pct=0.2))["The Firefighter"]
+        marginal = archetype_scores(_make_sig(fix_pct=0.18, feat_pct=0.17))["The Firefighter"]
+        assert dominant > 7.0
+        assert marginal < 4.5  # barely edging out feat must not score high
+
+    def test_marathoner_ignores_outlier_longest_session(self):
+        # One huge longest run but short average + few deep sessions -> low.
+        outlier = archetype_scores(
+            _make_sig(
+                longest_session_minutes=700,
+                avg_session_minutes=15,
+                deep_session_count=5,
+                total_sessions=80,
+            )
+        )["The Marathoner"]
+        real = archetype_scores(
+            _make_sig(
+                longest_session_minutes=200,
+                avg_session_minutes=70,
+                deep_session_count=40,
+                total_sessions=60,
+            )
+        )["The Marathoner"]
+        assert outlier < 3.0
+        assert real > 6.0
+
     def test_evening_peak_counts_as_night_owl(self):
         # A 21:00 peak with heavy evening hours should score Night Owl high,
         # even though late_night_pct (strictly after 22:00) is modest.

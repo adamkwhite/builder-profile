@@ -323,6 +323,7 @@ def _night_fraction(sig: BehavioralSignals) -> float:
 def archetype_scores(sig: BehavioralSignals) -> dict[str, float]:
     """Score each archetype 0-10 from measured signals (for the radar)."""
     micro_frac = (sig.micro_session_count / sig.total_sessions) if sig.total_sessions else 0.0
+    deep_frac = (sig.deep_session_count / sig.total_sessions) if sig.total_sessions else 0.0
     night = _night_fraction(sig) * 11
     if sig.peak_hour is not None:
         if sig.peak_hour >= 21 or sig.peak_hour < 5:
@@ -346,9 +347,16 @@ def archetype_scores(sig: BehavioralSignals) -> dict[str, float]:
         ),
         "Night Owl": _clamp10(night),
         "The Orchestrator": _clamp10(sig.max_parallel_agents / 1.2),
-        "The Firefighter": _clamp10(sig.fix_pct * 25 + (2 if sig.fix_pct > sig.feat_pct else 0)),
+        # Firefighter needs fix to genuinely dominate, not just edge out feat by a
+        # rounding margin. Gentler curve, margin-scaled bonus (no binary cliff).
+        "The Firefighter": _clamp10(
+            sig.fix_pct * 18 + min(max(sig.fix_pct - sig.feat_pct, 0) * 15, 2)
+        ),
+        # Marathoner = consistently long, deep sessions. Driven by average session
+        # length and the share of deep sessions — NOT the single longest run, which
+        # is easily inflated by one resumed/left-open session.
         "The Marathoner": _clamp10(
-            (sig.longest_session_minutes / 72) * 0.5 + (sig.avg_session_minutes / 18) * 0.5
+            (sig.avg_session_minutes / 12) * 0.5 + min(deep_frac * 20, 10) * 0.5
         ),
         "The Sprinter": _clamp10(micro_frac * 12),
         "The Polymath": _clamp10(sig.project_count / 2),
