@@ -11,21 +11,76 @@ from pathlib import Path
 
 from builder_profile.models import BehavioralProfile, BehavioralSignals
 
-# LaTeX header injected via pandoc -H: accent colours, tighter spacing, clean tables.
+# LaTeX preamble injected via pandoc -H. Clean-modern look: Lato (set as the
+# main font via -V), a blue accent system, boxed insight cards (tcolorbox),
+# pgfplots charts, and zebra-striped metric tables.
 _LATEX_HEADER = r"""\usepackage{xcolor}
 \definecolor{accent}{RGB}{37,99,235}
+\definecolor{accentdark}{RGB}{30,64,175}
+\definecolor{cardbg}{RGB}{239,246,255}
+\definecolor{labelgray}{RGB}{100,116,139}
+\definecolor{bodygray}{RGB}{51,65,85}
+\definecolor{rulegray}{RGB}{203,213,225}
 \usepackage{titlesec}
-\titleformat{\section}{\large\bfseries\color{accent}}{}{0em}{}[\vspace{-4pt}\rule{\linewidth}{0.5pt}\vspace{2pt}]
-\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
-\titleformat{\subsubsection}{\normalsize\bfseries\color{accent}}{}{0em}{}
-% Insight-card questions are subsubsections: generous space above (separates
-% cards) and tight space below (binds the question to its answer + body).
-\titlespacing*{\subsubsection}{0pt}{13pt plus 3pt minus 2pt}{2pt}
+\titleformat{\section}{\Large\bfseries\color{accent}}{}{0em}{}[\vspace{-5pt}{\color{rulegray}\rule{\linewidth}{1pt}}\vspace{2pt}]
+\titlespacing*{\section}{0pt}{14pt plus 3pt}{6pt}
+\titleformat{\subsection}{\large\bfseries\color{accentdark}}{}{0em}{}
+\titlespacing*{\subsection}{0pt}{12pt plus 2pt}{4pt}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{5pt plus 2pt}
-\renewcommand{\arraystretch}{1.05}
-\usepackage{booktabs}
+\usepackage{multicol}
+\usepackage{array}
+\usepackage{colortbl}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins}
+\newtcolorbox{icard}{enhanced, colback=cardbg, colframe=accent,
+  boxrule=0pt, leftrule=3pt, arc=2pt, boxsep=0pt,
+  left=8pt, right=8pt, top=6pt, bottom=6pt, width=\linewidth}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+% Lighter footer/page number
+\usepackage{fancyhdr}
+\pagestyle{fancy}\fancyhf{}\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[C]{\footnotesize\color{labelgray}\thepage}
 """
+
+_SKIP = {"0", "0 min", "0.0 words", "0%", "", " to ", "0 days"}
+
+_TEX_REPL = {
+    "\\": r"\textbackslash{}",
+    "{": r"\{",
+    "}": r"\}",
+    "&": r"\&",
+    "%": r"\%",
+    "$": r"\$",
+    "#": r"\#",
+    "_": r"\_",
+    "~": r"\textasciitilde{}",
+    "^": r"\textasciicircum{}",
+}
+
+
+def _tex(s) -> str:
+    """Escape LaTeX special characters in arbitrary text."""
+    return "".join(_TEX_REPL.get(c, c) for c in str(s))
+
+
+def _kfmt(n: int) -> str:
+    """Compact large numbers for the badge row: 254735 -> 255k."""
+    if n >= 1000:
+        return f"{n / 1000:.0f}k"
+    return str(n)
+
+
+def _short_model(name: str) -> str:
+    """claude-sonnet-4-6 -> Sonnet 4.6; unknown names pass through."""
+    n = name.replace("claude-", "")
+    for fam in ("opus", "sonnet", "haiku"):
+        if fam in n:
+            parts = n.split("-")
+            ver = ".".join(parts[1:3]) if len(parts) >= 3 else ""
+            return f"{fam.capitalize()} {ver}".strip()
+    return name
 
 
 def generate_report(profile: BehavioralProfile, output_dir: Path) -> tuple[Path | None, Path]:
@@ -59,48 +114,8 @@ def _write_json(profile: BehavioralProfile, path: Path):
     print(f"  JSON: {path}", file=sys.stderr)
 
 
-def _fmt_signals_strip(sig: BehavioralSignals) -> list[str]:
-    parts = []
-    if sig.total_commits:
-        parts.append(f"**{sig.total_commits}** commits")
-    if sig.total_insertions:
-        parts.append(f"**{sig.total_insertions:,}** lines")
-    if sig.total_prs:
-        parts.append(f"**{sig.total_prs}** PRs")
-    if sig.total_sessions:
-        parts.append(f"**{sig.total_sessions}** sessions")
-    if sig.test_ratio_avg > 0:
-        parts.append(f"**{sig.test_ratio_avg:.0%}** test ratio")
-    if sig.peak_hour is not None:
-        parts.append(f"peak **{sig.peak_hour}:00**")
-    if sig.streak_days_max:
-        parts.append(f"**{sig.streak_days_max}d** streak")
-    if sig.date_from and sig.date_to:
-        return [" | ".join(parts), "", f"*{sig.date_from} to {sig.date_to}*", ""]
-    return [" | ".join(parts), ""]
-
-
-def _fmt_card_grid(profile: BehavioralProfile) -> list[str]:
-    if not profile.insight_cards:
-        return []
-    lines = ["## Insights", ""]
-    for card in profile.insight_cards:
-        # Question is the accent heading (it stands out and marks the card start);
-        # the answer is bold beneath it, then the explanation.
-        lines.extend(
-            [
-                f"### {card.category}",
-                "",
-                f"**{card.title}**",
-                "",
-                card.body,
-                "",
-            ]
-        )
-    return lines
-
-
-def _write_markdown(profile: BehavioralProfile, path: Path):
+def _fmt_cover(profile: BehavioralProfile) -> list[str]:
+    """Big accent title, tagline, and a non-wrapping row of stat badges."""
     sig = profile.signals
     archetype_desc = {
         "The Architect": "Plans first, codifies decisions, and builds scaffolding that compounds.",
@@ -108,32 +123,266 @@ def _write_markdown(profile: BehavioralProfile, path: Path):
         "Velocity Machine": "Ships fast with high LOC/hour, long streaks, and relentless output.",
         "Night Owl": "Peak productivity after 10pm. Most commits and deepest work happen late at night.",
     }
-
-    lines: list[str] = [
-        "---",
-        "geometry: margin=0.75in",
-        "fontsize: 11pt",
-        "---",
-        "",
-    ]
-
-    # Header: archetype is the title (falls back to a plain title with --no-llm).
-    # No YAML title/date block — that injects a near-empty title page.
     title = profile.archetype or "Builder Profile"
-    lines.extend([f"# {title}", ""])
+    lines = [
+        r"\noindent{\fontsize{30}{34}\selectfont\bfseries\color{accent}" + _tex(title) + r"}\par",
+    ]
     if profile.archetype:
         desc = archetype_desc.get(profile.archetype, "")
         if profile.secondary_archetypes:
             desc += f" Also: {', '.join(profile.secondary_archetypes)}."
         if desc:
-            lines.extend([f"*{desc}*", ""])
+            lines.append(r"\vspace{2pt}")
+            lines.append(r"\noindent{\large\itshape\color{labelgray}" + _tex(desc) + r"}\par")
+    if sig.date_from and sig.date_to:
+        lines.append(r"\vspace{1pt}")
+        lines.append(
+            r"\noindent{\footnotesize\color{labelgray}"
+            + _tex(f"{sig.date_from} to {sig.date_to}")
+            + r"}\par"
+        )
+    lines.append(r"\vspace{8pt}")
+    lines.append("")
 
-    # Metrics strip
-    lines.extend(_fmt_signals_strip(sig))
+    # Badge row
+    badges: list[tuple[str, str]] = []
+    if sig.total_commits:
+        badges.append((f"{sig.total_commits:,}", "commits"))
+    if sig.total_insertions:
+        badges.append((_kfmt(sig.total_insertions), "lines"))
+    if sig.total_prs:
+        badges.append((f"{sig.total_prs:,}", "PRs"))
+    if sig.total_sessions:
+        badges.append((str(sig.total_sessions), "sessions"))
+    if sig.test_ratio_avg > 0:
+        badges.append((f"{sig.test_ratio_avg:.0%}", "test ratio"))
+    if sig.peak_hour is not None:
+        badges.append((f"{sig.peak_hour}:00", "peak hour"))
+    if sig.streak_days_max:
+        badges.append((f"{sig.streak_days_max}d", "streak"))
 
-    # Cover (archetype + strip) shares the first page with Insights, so there is
-    # no near-empty cover page. Insights flows right after the header.
-    lines.extend(_fmt_card_grid(profile))
+    if badges:
+        n = len(badges)
+        width = f"{0.97 / n:.3f}"
+        colspec = r"*{" + str(n) + r"}{>{\centering\arraybackslash}p{" + width + r"\linewidth}}"
+        nums = " & ".join(
+            r"{\fontsize{17}{19}\selectfont\bfseries\color{accent}" + _tex(v) + r"}"
+            for v, _ in badges
+        )
+        labs = " & ".join(
+            r"{\footnotesize\color{labelgray}" + _tex(lbl) + r"}" for _, lbl in badges
+        )
+        lines += [
+            r"\begin{center}\setlength{\tabcolsep}{2pt}",
+            r"\begin{tabular}{" + colspec + r"}",
+            nums + r"\\[1pt]",
+            labs + r"\\",
+            r"\end{tabular}\end{center}",
+            r"\vspace{2pt}{\color{rulegray}\rule{\linewidth}{0.6pt}}",
+            "",
+        ]
+    return lines
+
+
+def _fmt_cards(profile: BehavioralProfile) -> list[str]:
+    """Insight cards as boxed tcolorboxes in a 2-column flow."""
+    if not profile.insight_cards:
+        return []
+    out = ["## Insights", "", r"\begin{multicols}{2}\raggedcolumns", ""]
+    for card in profile.insight_cards:
+        out.append(
+            r"\begin{icard}"
+            r"{\footnotesize\bfseries\color{accentdark}" + _tex(card.category) + r"}\par"
+            r"\vspace{3pt}{\large\bfseries\color{accent}" + _tex(card.title) + r"}\par"
+            r"\vspace{2pt}{\footnotesize\color{bodygray}" + _tex(card.body) + r"}"
+            r"\end{icard}\vspace{7pt}"
+        )
+    out += [r"\end{multicols}", ""]
+    return out
+
+
+def _fmt_charts(sig: BehavioralSignals) -> list[str]:
+    """pgfplots: commits-by-hour bar chart and a model-mix horizontal bar."""
+    blocks: list[str] = []
+
+    hours: dict[int, int] = {}
+    for k, v in (sig.hourly_distribution or {}).items():
+        try:
+            hours[int(k)] = hours.get(int(k), 0) + int(v)
+        except (ValueError, TypeError):
+            continue
+    if hours:
+        coords = " ".join(f"({h},{hours.get(h, 0)})" for h in range(24))
+        blocks += [
+            r"\subsection*{When you build}",
+            r"\begin{center}",
+            r"\begin{tikzpicture}",
+            r"\begin{axis}[ybar, width=0.96\linewidth, height=4cm, bar width=6pt, ymin=0, "
+            r"axis y line=left, axis x line=bottom, axis line style={rulegray}, "
+            r"xtick={0,3,6,9,12,15,18,21,23}, xticklabel style={font=\scriptsize}, "
+            r"yticklabel style={font=\scriptsize, color=labelgray}, ytick align=outside, "
+            r"xlabel={\scriptsize\color{labelgray}hour of day}, enlarge x limits=0.02, "
+            r"every axis plot/.append style={fill=accent, draw=accent}]",
+            r"\addplot coordinates {" + coords + r"};",
+            r"\end{axis}",
+            r"\end{tikzpicture}",
+            r"\end{center}",
+            "",
+        ]
+
+    md = sig.model_distribution or {}
+    models = [(m, p) for m, p in sorted(md.items(), key=lambda x: -x[1]) if p > 0][:4]
+    if models:
+        names = [_short_model(m) for m, _ in models]
+        symbolic = ", ".join(names)
+        coords = " ".join(f"({p * 100:.0f},{name})" for (m, p), name in zip(models, names))
+        xmax = max(p for _, p in models) * 100 + 12
+        blocks += [
+            r"\subsection*{Model mix}",
+            r"\begin{center}",
+            r"\begin{tikzpicture}",
+            r"\begin{axis}[xbar, width=0.9\linewidth, height=3.6cm, xmin=0, xmax="
+            + f"{xmax:.0f}"
+            + r", symbolic y coords={"
+            + symbolic
+            + r"}, ytick=data, y dir=reverse, "
+            r"axis x line=none, xtick=\empty, axis y line=left, "
+            r"y axis line style={draw=none}, tick style={draw=none}, "
+            r"yticklabel style={font=\footnotesize, color=bodygray}, "
+            r"nodes near coords={\footnotesize\color{labelgray}"
+            r"\pgfmathprintnumber\pgfplotspointmeta\%}, "
+            r"every node near coord/.append style={anchor=west}, "
+            r"every axis plot/.append style={fill=accent, draw=accent, bar width=9pt}]",
+            r"\addplot coordinates {" + coords + r"};",
+            r"\end{axis}",
+            r"\end{tikzpicture}",
+            r"\end{center}",
+            "",
+        ]
+
+    if not blocks:
+        return []
+    return ["## Activity", "", *blocks]
+
+
+def _latex_table(title: str, rows: list[tuple[str, str]]) -> str:
+    visible = [(lbl, val) for lbl, val in rows if val and val not in _SKIP]
+    if not visible:
+        return ""
+    cols = r"@{}p{0.60\linewidth}>{\raggedleft\arraybackslash}p{0.30\linewidth}@{}"
+    body = [
+        r"\rowcolor{accent}\multicolumn{2}{@{}l@{}}{\color{white}\bfseries~" + _tex(title) + r"}\\"
+    ]
+    for i, (lbl, val) in enumerate(visible):
+        shade = r"\rowcolor{cardbg}" if i % 2 == 0 else ""
+        body.append(f"{shade} {_tex(lbl)} & {_tex(val)}\\\\")
+    return r"\begin{tabular}{" + cols + "}\n" + "\n".join(body) + "\n" + r"\end{tabular}"
+
+
+def _fmt_metrics(sig: BehavioralSignals) -> list[str]:
+    groups: list[tuple[str, list[tuple[str, str]]]] = [
+        (
+            "Output",
+            [
+                ("Commits", str(sig.total_commits)),
+                ("Lines inserted", f"{sig.total_insertions:,}"),
+                ("PRs merged", str(sig.total_prs)),
+                ("Features shipped", str(sig.features_shipped)),
+                ("AI-assisted commits", str(sig.ai_assisted_commits)),
+                ("Feature commits", f"{sig.feat_pct:.0%}"),
+                ("Fix commits", f"{sig.fix_pct:.0%}"),
+                ("Test coverage", f"{sig.coverage_pct:.0%}" if sig.coverage_pct else ""),
+                ("Test LOC ratio", f"{sig.test_ratio_avg:.0%}"),
+                ("Projects", str(sig.project_count)),
+            ],
+        ),
+        (
+            "Sessions",
+            [
+                ("Total sessions", str(sig.total_sessions)),
+                ("Deep (>50 min)", str(sig.deep_session_count)),
+                ("Micro (<20 min)", str(sig.micro_session_count)),
+                ("Avg session", f"{sig.avg_session_minutes:.0f} min"),
+                ("Longest session", f"{sig.longest_session_minutes} min"),
+                ("LOC/session-hour", f"{sig.loc_per_session_hour:.0f}"),
+            ],
+        ),
+        (
+            "Planning",
+            [
+                ("Issues authored", str(sig.issues_opened)),
+                (
+                    "PR-issue linkage",
+                    f"{sig.issue_linked_pr_pct:.0%}" if sig.issue_linked_pr_pct else "",
+                ),
+                ("Planning sessions", str(sig.planning_session_count)),
+                ("Wrapups logged", str(sig.wrapup_count)),
+            ],
+        ),
+        (
+            "Timing",
+            [
+                ("Peak hour", f"{sig.peak_hour}:00" if sig.peak_hour is not None else ""),
+                ("Late-night commits", f"{sig.late_night_pct:.0%}"),
+                ("Best shipping day", sig.best_shipping_day),
+                ("Max streak", f"{sig.streak_days_max} days"),
+            ],
+        ),
+        (
+            "Agents",
+            [
+                ("Max parallel agents", str(sig.max_parallel_agents)),
+            ]
+            + (
+                [
+                    (
+                        "Primary model",
+                        f"{_short_model(max(sig.model_distribution, key=sig.model_distribution.__getitem__))} "
+                        f"({max(sig.model_distribution.values()):.0%})",
+                    )
+                ]
+                if sig.model_distribution
+                else []
+            ),
+        ),
+        (
+            "Steering",
+            [
+                ("Avg prompt length", f"{sig.avg_prompt_words:.1f} words"),
+                ("Correction rate", f"{sig.correction_rate:.0%}"),
+                ("Question ratio", f"{sig.question_ratio:.0%}"),
+                ("Politeness count", str(sig.politeness_count)),
+                ("Plan-mode sessions", f"{sig.plan_mode_pct:.0%}"),
+            ],
+        ),
+    ]
+    tables = [t for t in (_latex_table(title, rows) for title, rows in groups) if t]
+    if not tables:
+        return []
+    out = ["## Metrics", "", r"\begin{multicols}{2}\footnotesize\setlength{\tabcolsep}{4pt}", ""]
+    for t in tables:
+        out.append(t)
+        out.append(r"\vspace{8pt}")
+        out.append("")
+    out += [r"\end{multicols}", ""]
+    return out
+
+
+def _write_markdown(profile: BehavioralProfile, path: Path):
+    lines: list[str] = [
+        "---",
+        "geometry: margin=0.7in",
+        "fontsize: 11pt",
+        "---",
+        "",
+    ]
+
+    # Cover (title + badges) shares the first page with Insights — no empty cover.
+    lines.extend(_fmt_cover(profile))
+    lines.extend(_fmt_cards(profile))
+
+    # Charts flow after the cards.
+    lines.extend(_fmt_charts(profile.signals))
 
     # Page break before the narrative section (only if LLM content is present).
     if profile.portrait or profile.growth_edge:
@@ -143,105 +392,21 @@ def _write_markdown(profile: BehavioralProfile, path: Path):
         if profile.growth_edge:
             lines.extend(["## Growth Edge", "", profile.growth_edge, ""])
 
-    # Page break before the metrics reference tables. Wrapped in a smaller font
-    # group so all five tables fit on a single page (no near-empty trailing page).
-    lines.extend(["\\newpage", "", "## Metrics", "", "\\begingroup\\footnotesize", ""])
-    lines.extend(_fmt_metrics_table(sig))
-    lines.extend(["\\endgroup", ""])
+    # Page break before the metrics reference tables.
+    lines.extend(["\\newpage", ""])
+    lines.extend(_fmt_metrics(profile.signals))
 
     date = datetime.now().strftime("%Y-%m-%d")
-    lines.extend(["", "---", f"*Generated by builder-profile · {date}*"])
+    lines.extend(
+        [
+            r"\vspace{6pt}{\color{rulegray}\rule{\linewidth}{0.6pt}}\par",
+            r"\noindent{\footnotesize\color{labelgray}Generated by builder-profile · "
+            + date
+            + r"}",
+        ]
+    )
     path.write_text("\n".join(lines))
     print(f"  MD:   {path}", file=sys.stderr)
-
-
-def _fmt_metrics_table(sig: BehavioralSignals) -> list[str]:
-    _skip = {"0", "0 min", "0.0 words", "0%", " to ", "0 days"}
-
-    def table(section: str, rows: list[tuple[str, str]]) -> list[str]:
-        # Use section name as visible header column so tables aren't headless
-        out = [f"| **{section}** | |", "|:---|---:|"]
-        for label, value in rows:
-            if value and value not in _skip:
-                out.append(f"| {label} | {value} |")
-        return out + [""] if len(out) > 2 else []
-
-    lines: list[str] = []
-
-    output_rows = [
-        ("Commits", str(sig.total_commits)),
-        ("Lines inserted", f"{sig.total_insertions:,}"),
-        ("PRs merged", str(sig.total_prs)),
-        ("Features shipped", str(sig.features_shipped)),
-        ("AI-assisted commits", str(sig.ai_assisted_commits)),
-        ("Feature commits", f"{sig.feat_pct:.0%}"),
-        ("Fix commits", f"{sig.fix_pct:.0%}"),
-        ("Test coverage", f"{sig.coverage_pct:.0%}" if sig.coverage_pct else ""),
-        ("Test LOC ratio", f"{sig.test_ratio_avg:.0%}"),
-        ("Date range", f"{sig.date_from} to {sig.date_to}"),
-        ("Projects", str(sig.project_count)),
-    ]
-    t = table("Output", output_rows)
-    if t:
-        lines += t
-
-    session_rows = [
-        ("Total sessions", str(sig.total_sessions)),
-        ("Deep (>50 min)", str(sig.deep_session_count)),
-        ("Micro (<20 min)", str(sig.micro_session_count)),
-        ("Avg session", f"{sig.avg_session_minutes:.0f} min"),
-        ("Longest session", f"{sig.longest_session_minutes} min"),
-        ("LOC/session-hour", f"{sig.loc_per_session_hour:.0f}"),
-    ]
-    t = table("Sessions", session_rows)
-    if t:
-        lines += t
-
-    planning_rows = [
-        ("Issues authored", str(sig.issues_opened)),
-        (
-            "PR-issue linkage",
-            f"{sig.issue_linked_pr_pct:.0%}" if sig.issue_linked_pr_pct else "",
-        ),
-        ("Planning sessions", str(sig.planning_session_count)),
-        ("Wrapups logged", str(sig.wrapup_count)),
-    ]
-    t = table("Planning", planning_rows)
-    if t:
-        lines += t
-
-    timing_rows = [
-        ("Peak hour", f"{sig.peak_hour}:00" if sig.peak_hour is not None else ""),
-        ("Late-night commits", f"{sig.late_night_pct:.0%}"),
-        ("Best shipping day", sig.best_shipping_day),
-        ("Max streak", f"{sig.streak_days_max} days"),
-    ]
-    t = table("Timing", timing_rows)
-    if t:
-        lines += t
-
-    agent_rows = [
-        ("Max parallel agents", str(sig.max_parallel_agents)),
-    ]
-    if sig.model_distribution:
-        top = max(sig.model_distribution, key=sig.model_distribution.__getitem__)
-        agent_rows.append(("Primary model", f"{top} ({sig.model_distribution[top]:.0%})"))
-    t = table("Agents", agent_rows)
-    if t:
-        lines += t
-
-    steering_rows = [
-        ("Avg prompt length", f"{sig.avg_prompt_words:.1f} words"),
-        ("Correction rate", f"{sig.correction_rate:.0%}"),
-        ("Question ratio", f"{sig.question_ratio:.0%}"),
-        ("Politeness count", str(sig.politeness_count)),
-        ("Plan-mode sessions", f"{sig.plan_mode_pct:.0%}"),
-    ]
-    t = table("Steering", steering_rows)
-    if t:
-        lines += t
-
-    return lines
 
 
 def _render_pdf(md_path: Path, pdf_path: Path) -> bool:
@@ -259,9 +424,9 @@ def _render_pdf(md_path: Path, pdf_path: Path) -> bool:
                 "-H",
                 header_path,
                 "-V",
-                "mainfont=DejaVu Serif",
+                "mainfont=Lato",
                 "-V",
-                "sansfont=DejaVu Sans",
+                "sansfont=Lato",
                 "-V",
                 "monofont=DejaVu Sans Mono",
                 "-V",
@@ -271,12 +436,12 @@ def _render_pdf(md_path: Path, pdf_path: Path) -> bool:
             ],
             capture_output=True,
             text=True,
-            timeout=90,
+            timeout=120,
         )
         if result.returncode == 0:
             print(f"  PDF:  {pdf_path}", file=sys.stderr)
             return True
-        print(f"  Warning: pandoc failed: {result.stderr[:300]}", file=sys.stderr)
+        print(f"  Warning: pandoc failed: {result.stderr[:400]}", file=sys.stderr)
         return False
     except FileNotFoundError:
         print("  Warning: pandoc not found. Markdown + JSON still generated.", file=sys.stderr)
