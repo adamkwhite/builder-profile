@@ -145,7 +145,7 @@ def _write_markdown(profile: BehavioralProfile, path: Path):
 
     # Page break before the metrics reference tables. Wrapped in a smaller font
     # group so all five tables fit on a single page (no near-empty trailing page).
-    lines.extend(["\\newpage", "", "## Metrics", "", "\\begingroup\\small", ""])
+    lines.extend(["\\newpage", "", "## Metrics", "", "\\begingroup\\footnotesize", ""])
     lines.extend(_fmt_metrics_table(sig))
     lines.extend(["\\endgroup", ""])
 
@@ -192,10 +192,21 @@ def _fmt_metrics_table(sig: BehavioralSignals) -> list[str]:
         ("Avg session", f"{sig.avg_session_minutes:.0f} min"),
         ("Longest session", f"{sig.longest_session_minutes} min"),
         ("LOC/session-hour", f"{sig.loc_per_session_hour:.0f}"),
-        ("Wrapups logged", str(sig.wrapup_count)),
-        ("Planning sessions", str(sig.planning_session_count)),
     ]
     t = table("Sessions", session_rows)
+    if t:
+        lines += t
+
+    planning_rows = [
+        ("Issues authored", str(sig.issues_opened)),
+        (
+            "PR-issue linkage",
+            f"{sig.issue_linked_pr_pct:.0%}" if sig.issue_linked_pr_pct else "",
+        ),
+        ("Planning sessions", str(sig.planning_session_count)),
+        ("Wrapups logged", str(sig.wrapup_count)),
+    ]
+    t = table("Planning", planning_rows)
     if t:
         lines += t
 

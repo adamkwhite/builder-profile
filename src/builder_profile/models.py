@@ -167,6 +167,10 @@ class BehavioralSignals:
     # Session rituals (from claude-memory)
     wrapup_count: int = 0
     planning_session_count: int = 0
+    # Upstream planning (from GitHub issues)
+    issues_opened: int = 0
+    prs_with_linked_issue: int = 0
+    issue_linked_pr_pct: float = 0.0
 
 
 @dataclass

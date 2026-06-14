@@ -44,6 +44,8 @@ Rules:
 - insight_cards must cover exactly these 3 categories (the factual cards are generated separately)
 - Every claim in portrait and insight_cards must be traceable to a signal value or wrapup excerpt above
 - The wrapup excerpts show the actual planning and dispatch patterns — use them to ground the archetype and portrait
+- CRITICAL — upstream planning: this developer plans in GitHub issues BEFORE the session starts (see "Issues authored" and "PR-issue linkage"). Do NOT characterize terse prompts, short prompt length, low in-session plan-mode, or low correction rate as "one-shot", "unplanned", "shoots from the hip", or "mental model never externalized". The plan IS externalized — in issues, upstream of the agent. Terse prompts mean the thinking already happened in the issue, not that there was none. Treat a high issue count as deliberate, disciplined upfront planning.
+- Archetype weighting: when issue volume is substantial, weight toward The Architect (plans first, codifies decisions). The Architect should be the primary or a strong secondary even alongside Velocity Machine, and the portrait should show the plan-then-execute pattern.
 - Be specific and concrete. Name numbers. Don't use filler phrases.
 - Do not invent data not present in the signals or excerpts."""
 
@@ -78,7 +80,7 @@ def _format_signals(sig: BehavioralSignals) -> str:
         f"Correction rate: {sig.correction_rate:.0%} (how often first word redirects agent)",
         f"Question ratio: {sig.question_ratio:.0%} of prompts end with ?",
         f"Politeness count: {sig.politeness_count} thanks/please across all sessions",
-        f"Plan-mode sessions: {sig.plan_mode_pct:.0%}",
+        f"Plan-mode sessions: {sig.plan_mode_pct:.0%} (in-session; planning also happens upstream in issues — see below)",
         f"Top phrases: {', '.join(repr(p) for p in sig.top_phrases[:3]) if sig.top_phrases else 'none'}",
         f"Most cryptic prompt: {repr(sig.most_cryptic_prompt) if sig.most_cryptic_prompt else 'none'}",
     ]
@@ -88,6 +90,17 @@ def _format_signals(sig: BehavioralSignals) -> str:
         lines.append(
             f"Explicit planning sessions (/StartSession with agenda): {sig.planning_session_count}"
         )
+    if sig.issues_opened:
+        lines.append(
+            f"Issues authored (UPSTREAM PLANNING — the work is specced in issues before "
+            f"the session): {sig.issues_opened}"
+        )
+        if sig.prs_with_linked_issue:
+            lines.append(
+                f"PR-issue linkage: {sig.issue_linked_pr_pct:.0%} of merged PRs formally close "
+                f"a pre-filed issue ({sig.prs_with_linked_issue} PRs); many more reference issues "
+                f"informally — issue-driven workflow is the norm"
+            )
     if sig.model_distribution:
         top_model = max(sig.model_distribution, key=sig.model_distribution.__getitem__)
         pct = sig.model_distribution[top_model]
@@ -263,6 +276,21 @@ def _build_factual_cards(sig: BehavioralSignals) -> list[InsightCard]:
                 title=f"{sig.planning_session_count} planning sessions",
                 body=f"{sig.planning_session_count} sessions started with an explicit /StartSession agenda. You plan before you build.",
                 signal="planning_session_count",
+            )
+        )
+
+    # Upstream planning via GitHub issues — the work is specced before the session.
+    if sig.issues_opened >= 10:
+        body = f"You filed {sig.issues_opened} issues"
+        if sig.issue_linked_pr_pct > 0:
+            body += f", and {sig.issue_linked_pr_pct:.0%} of your merged PRs close a pre-filed one"
+        body += ". The planning happens in issues, then the agent executes."
+        cards.append(
+            InsightCard(
+                category="How do you plan your work?",
+                title=f"{sig.issues_opened} issues filed",
+                body=body,
+                signal="issues_opened",
             )
         )
 

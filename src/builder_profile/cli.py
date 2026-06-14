@@ -158,14 +158,33 @@ def main(argv: list[str] | None = None):
     git_sig = aggregate_commits(all_commits)
     sig = merge_signals(git_sig, sig)
 
-    # Step 3: Enrich from claude-memory (optional, graceful if absent)
-    from builder_profile.memory_collector import collect_from_memory, enrich_signals_from_memory
-
     since_date = ""
     if since_epoch:
         from datetime import datetime, timezone
 
         since_date = datetime.fromtimestamp(since_epoch, tz=timezone.utc).strftime("%Y-%m-%d")
+
+    # Step 2c: GitHub issue-based planning signals (planning done upstream of the
+    # session — counters the "one-shot" read of terse prompts / low plan-mode).
+    from builder_profile.issue_collector import collect_issue_signals, enrich_signals_from_issues
+
+    print("Collecting GitHub issue/planning signals...", file=sys.stderr)
+    remotes = [m.git_remote for m in manifests if m.git_remote]
+    issue_data = collect_issue_signals(remotes, since_date)
+    if issue_data:
+        enrich_signals_from_issues(sig, issue_data)
+        print(
+            f"  {issue_data.get('issues_opened', 0)} issues authored, "
+            f"{issue_data.get('issue_linked_pr_pct', 0):.0%} PR-issue linkage "
+            f"across {issue_data.get('repos_counted', 0)} repos",
+            file=sys.stderr,
+        )
+    else:
+        print("  gh unavailable or no GitHub remotes — skipping", file=sys.stderr)
+
+    # Step 3: Enrich from claude-memory (optional, graceful if absent)
+    from builder_profile.memory_collector import collect_from_memory, enrich_signals_from_memory
+
     print("Reading claude-memory...", file=sys.stderr)
     memory = collect_from_memory(since_date=since_date)
     if memory:
