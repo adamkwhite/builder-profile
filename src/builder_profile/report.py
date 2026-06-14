@@ -301,12 +301,34 @@ def _clamp10(x: float) -> float:
     return max(0.0, min(10.0, x))
 
 
+def _night_fraction(sig: BehavioralSignals) -> float:
+    """Fraction of commits in the evening/overnight window (21:00-04:59).
+
+    Broader than late_night_pct (which is strictly after 22:00) so a 21:00
+    peak still reads as night-owl behaviour. Falls back to late_night_pct
+    when no hourly data is available.
+    """
+    hours: dict[int, int] = {}
+    for k, v in (sig.hourly_distribution or {}).items():
+        try:
+            hours[int(k)] = hours.get(int(k), 0) + int(v)
+        except (ValueError, TypeError):
+            continue
+    total = sum(hours.values())
+    if not total:
+        return sig.late_night_pct
+    return sum(v for h, v in hours.items() if h >= 21 or h < 5) / total
+
+
 def archetype_scores(sig: BehavioralSignals) -> dict[str, float]:
     """Score each archetype 0-10 from measured signals (for the radar)."""
     micro_frac = (sig.micro_session_count / sig.total_sessions) if sig.total_sessions else 0.0
-    night = sig.late_night_pct * 12
-    if sig.peak_hour is not None and (sig.peak_hour >= 22 or sig.peak_hour < 4):
-        night += 2
+    night = _night_fraction(sig) * 11
+    if sig.peak_hour is not None:
+        if sig.peak_hour >= 21 or sig.peak_hour < 5:
+            night += 2  # peak in the evening/overnight block
+        elif sig.peak_hour in (19, 20):
+            night += 1  # early-evening peak, partial credit
     return {
         "The Architect": _clamp10(
             (sig.issues_opened / 50) * 0.45

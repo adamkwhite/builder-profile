@@ -45,7 +45,6 @@ def aggregate_retros(retros: list[dict]) -> BehavioralSignals:
     total_feat_prs = 0
     metric_count = 0
     hourly_combined: dict[str, int] = {}
-    day_counts: dict[str, int] = {}
     highlights: list[str] = []
     hotspot_counts: dict[str, int] = {}
     streak_max = 0
@@ -85,18 +84,6 @@ def aggregate_retros(retros: list[dict]) -> BehavioralSignals:
         hd = r.get("hourly_distribution", {})
         for h, count in hd.items():
             hourly_combined[h] = hourly_combined.get(h, 0) + count
-
-        # Day of week from tweetable / window_start
-        window_start = r.get("window_start", r.get("date", ""))
-        if window_start:
-            try:
-                from datetime import datetime
-
-                dt = datetime.fromisoformat(window_start[:10])
-                day = dt.strftime("%A")
-                day_counts[day] = day_counts.get(day, 0) + m.get("commits", 0)
-            except ValueError:
-                pass
 
         # Session highlights
         ctx = r.get("context", {})
@@ -156,10 +143,9 @@ def aggregate_retros(retros: list[dict]) -> BehavioralSignals:
         total_h = sum(hourly_combined.values()) or 1
         sig.late_night_pct = late_night / total_h
 
-    # Best shipping day
-    if day_counts:
-        sig.best_shipping_day = max(day_counts, key=day_counts.__getitem__)
-        sig.weekday_distribution = dict(day_counts)
+    # Weekday signals (best_shipping_day + weekday_distribution) come from
+    # aggregate_commits, which uses real per-commit dates. Retro snapshots only
+    # know the window's start day, which would bucket a whole week onto one day.
 
     # Hotspots
     sig.hotspots = [
