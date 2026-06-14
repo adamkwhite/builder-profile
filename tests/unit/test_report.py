@@ -112,6 +112,13 @@ class TestFmtCover:
         assert "PRs" not in combined
         assert "streak" not in combined
 
+    def test_expanded_archetype_renders_shared_description(self):
+        # New archetypes get their tagline from the shared ARCHETYPES dict.
+        profile = _make_profile(archetype="The Orchestrator", secondary_archetypes=[])
+        combined = " ".join(_fmt_cover(profile))
+        assert "The Orchestrator" in combined
+        assert "parallel" in combined
+
 
 class TestFmtCards:
     def test_renders_all_cards_as_boxes(self):

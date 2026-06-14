@@ -4,11 +4,22 @@ import json
 
 from builder_profile.models import BehavioralProfile, BehavioralSignals, InsightCard
 
+# Each archetype maps to a measured signal so it is actually earnable:
+#   Architect -> issues authored / planning   Quality Guardian -> coverage, test ratio
+#   Velocity Machine -> LOC/hour, streaks      Night Owl -> late_night_pct, peak_hour
+#   Orchestrator -> max_parallel_agents        Firefighter -> fix_pct vs feat_pct
+#   Marathoner -> longest/deep sessions        Sprinter -> micro_session_count
+#   Polymath -> project_count
 ARCHETYPES = {
     "The Architect": "Plans first, codifies decisions, and builds scaffolding that compounds.",
     "Quality Guardian": "Prioritises test coverage, careful review, and defect prevention over speed.",
     "Velocity Machine": "Ships fast with high LOC/hour, long streaks, and relentless output.",
-    "Night Owl": "Peak productivity after 10pm — most commits and deepest work happen late at night.",
+    "Night Owl": "Peak productivity after 10pm. Most commits and deepest work happen late at night.",
+    "The Orchestrator": "Runs fleets of coding agents in parallel, conducting many work-streams at once.",
+    "The Firefighter": "Fix-heavy and reactive. A large share of the work is bug fixes, closing issues as fast as they surface.",
+    "The Marathoner": "Works in long, deep, uninterrupted sessions with sustained focus over many hours.",
+    "The Sprinter": "Works in short, frequent bursts. Many micro-sessions, quick in and out.",
+    "The Polymath": "Spreads across many projects at once, context-switching fluidly between repos.",
 }
 
 SYNTHESIS_PROMPT = """You are analyzing a software developer's coding behavior based on measured signals from their Claude Code sessions, weekly retro snapshots, and end-of-session wrapup notes. Produce a behavioral profile in the style of Paxel (paxel.ycombinator.com).
