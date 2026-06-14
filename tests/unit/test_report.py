@@ -148,6 +148,16 @@ class TestArchetypeScores:
         assert orch > none
         assert orch >= 9.0
 
+    def test_evening_peak_counts_as_night_owl(self):
+        # A 21:00 peak with heavy evening hours should score Night Owl high,
+        # even though late_night_pct (strictly after 22:00) is modest.
+        sig = _make_sig(
+            peak_hour=21,
+            late_night_pct=0.31,
+            hourly_distribution={"21": 50, "22": 40, "23": 30, "14": 10, "10": 8},
+        )
+        assert archetype_scores(sig)["Night Owl"] >= 7.0
+
 
 class TestRadar:
     def test_renders_tikz_with_all_axes(self):
