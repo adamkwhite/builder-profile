@@ -226,6 +226,28 @@ def _fmt_charts(sig: BehavioralSignals) -> list[str]:
             "",
         ]
 
+    week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    abbr = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    wd = sig.weekday_distribution or {}
+    if any(wd.get(d) for d in week):
+        wcoords = " ".join(f"({abbr[i]},{int(wd.get(week[i], 0))})" for i in range(7))
+        blocks += [
+            r"\subsection*{When you ship (commits by day)}",
+            r"\begin{center}",
+            r"\begin{tikzpicture}",
+            r"\begin{axis}[ybar, width=0.96\linewidth, height=4cm, bar width=16pt, ymin=0, "
+            r"symbolic x coords={Mon,Tue,Wed,Thu,Fri,Sat,Sun}, xtick=data, "
+            r"axis y line=left, axis x line=bottom, axis line style={rulegray}, "
+            r"xticklabel style={font=\scriptsize}, "
+            r"yticklabel style={font=\scriptsize, color=labelgray}, ytick align=outside, "
+            r"enlarge x limits=0.08, every axis plot/.append style={fill=accent, draw=accent}]",
+            r"\addplot coordinates {" + wcoords + r"};",
+            r"\end{axis}",
+            r"\end{tikzpicture}",
+            r"\end{center}",
+            "",
+        ]
+
     md = sig.model_distribution or {}
     models = [(m, p) for m, p in sorted(md.items(), key=lambda x: -x[1]) if p > 0][:4]
     if models:
@@ -259,6 +281,110 @@ def _fmt_charts(sig: BehavioralSignals) -> list[str]:
     if not blocks:
         return []
     return ["## Activity", "", *blocks]
+
+
+# Short labels for the radar spokes (full archetype name -> short).
+_RADAR_SHORT = {
+    "The Architect": "Architect",
+    "Quality Guardian": "Guardian",
+    "Velocity Machine": "Velocity",
+    "Night Owl": "Night Owl",
+    "The Orchestrator": "Orchestrator",
+    "The Firefighter": "Firefighter",
+    "The Marathoner": "Marathoner",
+    "The Sprinter": "Sprinter",
+    "The Polymath": "Polymath",
+}
+
+
+def _clamp10(x: float) -> float:
+    return max(0.0, min(10.0, x))
+
+
+def archetype_scores(sig: BehavioralSignals) -> dict[str, float]:
+    """Score each archetype 0-10 from measured signals (for the radar)."""
+    micro_frac = (sig.micro_session_count / sig.total_sessions) if sig.total_sessions else 0.0
+    night = sig.late_night_pct * 12
+    if sig.peak_hour is not None and (sig.peak_hour >= 22 or sig.peak_hour < 4):
+        night += 2
+    return {
+        "The Architect": _clamp10(
+            (sig.issues_opened / 50) * 0.45
+            + (sig.planning_session_count / 6) * 0.25
+            + (sig.plan_mode_pct * 30) * 0.15
+            + (sig.wrapup_count / 15) * 0.15
+        ),
+        "Quality Guardian": _clamp10(
+            sig.coverage_pct * 10 * 0.6 + min(sig.test_ratio_avg * 20, 10) * 0.4
+        ),
+        "Velocity Machine": _clamp10(
+            (sig.loc_per_session_hour / 300) * 0.5
+            + (sig.streak_days_max / 3) * 0.3
+            + (sig.total_insertions / 30000) * 0.2
+        ),
+        "Night Owl": _clamp10(night),
+        "The Orchestrator": _clamp10(sig.max_parallel_agents / 1.2),
+        "The Firefighter": _clamp10(sig.fix_pct * 25 + (2 if sig.fix_pct > sig.feat_pct else 0)),
+        "The Marathoner": _clamp10(
+            (sig.longest_session_minutes / 72) * 0.5 + (sig.avg_session_minutes / 18) * 0.5
+        ),
+        "The Sprinter": _clamp10(micro_frac * 12),
+        "The Polymath": _clamp10(sig.project_count / 2),
+    }
+
+
+def _fmt_radar(sig: BehavioralSignals) -> list[str]:
+    """Spider/radar chart of archetype scores (0-10) as raw tikz."""
+    import math
+
+    scores = {k: round(v, 1) for k, v in archetype_scores(sig).items()}
+    if not any(scores.values()):
+        return []
+    axes = list(scores)
+    n = len(axes)
+    radius = 3.0
+    angles = [90 - i * 360 / n for i in range(n)]
+
+    out = [
+        "## Archetype mix",
+        "",
+        r"\begin{center}",
+        r"\begin{tikzpicture}[font=\footnotesize]",
+    ]
+    # Concentric grid rings (2/4/6/8/10) + faint scale labels up the top spoke.
+    for lvl in (2, 4, 6, 8, 10):
+        r = lvl / 10 * radius
+        ring = " -- ".join(f"({a:.1f}:{r:.3f}cm)" for a in angles)
+        out.append(r"\draw[rulegray, line width=0.3pt] " + ring + r" -- cycle;")
+        out.append(
+            r"\node[color=labelgray, font=\tiny, anchor=east] at (90:"
+            + f"{r:.3f}"
+            + r"cm) {"
+            + str(lvl)
+            + r"};"
+        )
+    # Spokes + outer labels
+    for a, name in zip(angles, axes):
+        out.append(f"\\draw[rulegray, line width=0.3pt] (0,0) -- ({a:.1f}:{radius:.3f}cm);")
+        cos = math.cos(math.radians(a))
+        anchor = "west" if cos > 0.3 else ("east" if cos < -0.3 else "center")
+        out.append(
+            f"\\node[anchor={anchor}, color=bodygray] at ({a:.1f}:{radius + 0.32:.3f}cm) "
+            + r"{"
+            + _tex(_RADAR_SHORT[name])
+            + r"};"
+        )
+    # Data polygon + vertex dots
+    data = " -- ".join(
+        f"({a:.1f}:{scores[name] / 10 * radius:.3f}cm)" for a, name in zip(angles, axes)
+    )
+    out.append(
+        r"\draw[accent, line width=1pt, fill=accent, fill opacity=0.20] " + data + r" -- cycle;"
+    )
+    for a, name in zip(angles, axes):
+        out.append(f"\\fill[accent] ({a:.1f}:{scores[name] / 10 * radius:.3f}cm) circle (1.4pt);")
+    out += [r"\end{tikzpicture}", r"\end{center}", ""]
+    return out
 
 
 def _latex_table(title: str, rows: list[tuple[str, str]]) -> str:
@@ -377,7 +503,8 @@ def _write_markdown(profile: BehavioralProfile, path: Path):
     lines.extend(_fmt_cover(profile))
     lines.extend(_fmt_cards(profile))
 
-    # Charts flow after the cards.
+    # Archetype radar, then the activity charts.
+    lines.extend(_fmt_radar(profile.signals))
     lines.extend(_fmt_charts(profile.signals))
 
     # Page break before the narrative section (only if LLM content is present).

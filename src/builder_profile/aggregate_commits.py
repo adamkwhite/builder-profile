@@ -92,6 +92,7 @@ def aggregate_commits(commits: list[Commit]) -> BehavioralSignals:
     for c in mine:
         day_counts[c.date.strftime("%A")] += 1
     sig.best_shipping_day = max(day_counts, key=day_counts.__getitem__)
+    sig.weekday_distribution = dict(day_counts)
 
     # ── Hourly distribution / peak / late-night ───────────────────────────────
     hourly: dict[str, int] = defaultdict(int)

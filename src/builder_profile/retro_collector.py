@@ -159,6 +159,7 @@ def aggregate_retros(retros: list[dict]) -> BehavioralSignals:
     # Best shipping day
     if day_counts:
         sig.best_shipping_day = max(day_counts, key=day_counts.__getitem__)
+        sig.weekday_distribution = dict(day_counts)
 
     # Hotspots
     sig.hotspots = [
