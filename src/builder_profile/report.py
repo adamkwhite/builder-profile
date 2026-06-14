@@ -116,19 +116,15 @@ def _write_json(profile: BehavioralProfile, path: Path):
 
 def _fmt_cover(profile: BehavioralProfile) -> list[str]:
     """Big accent title, tagline, and a non-wrapping row of stat badges."""
+    from builder_profile.synthesis import ARCHETYPES
+
     sig = profile.signals
-    archetype_desc = {
-        "The Architect": "Plans first, codifies decisions, and builds scaffolding that compounds.",
-        "Quality Guardian": "Prioritises test coverage, careful review, and defect prevention over speed.",
-        "Velocity Machine": "Ships fast with high LOC/hour, long streaks, and relentless output.",
-        "Night Owl": "Peak productivity after 10pm. Most commits and deepest work happen late at night.",
-    }
     title = profile.archetype or "Builder Profile"
     lines = [
         r"\noindent{\fontsize{30}{34}\selectfont\bfseries\color{accent}" + _tex(title) + r"}\par",
     ]
     if profile.archetype:
-        desc = archetype_desc.get(profile.archetype, "")
+        desc = ARCHETYPES.get(profile.archetype, "")
         if profile.secondary_archetypes:
             desc += f" Secondary: {', '.join(profile.secondary_archetypes)}."
         if desc:
