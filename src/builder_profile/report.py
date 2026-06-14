@@ -130,7 +130,7 @@ def _fmt_cover(profile: BehavioralProfile) -> list[str]:
     if profile.archetype:
         desc = archetype_desc.get(profile.archetype, "")
         if profile.secondary_archetypes:
-            desc += f" Also: {', '.join(profile.secondary_archetypes)}."
+            desc += f" Secondary: {', '.join(profile.secondary_archetypes)}."
         if desc:
             lines.append(r"\vspace{2pt}")
             lines.append(r"\noindent{\large\itshape\color{labelgray}" + _tex(desc) + r"}\par")
