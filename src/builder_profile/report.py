@@ -562,6 +562,47 @@ def _write_markdown(profile: BehavioralProfile, path: Path):
     print(f"  MD:   {path}", file=sys.stderr)
 
 
+def _fc_families() -> set[str]:
+    """Lowercased set of installed font family names (empty if fc-list absent)."""
+    import shutil
+
+    if not shutil.which("fc-list"):
+        return set()
+    try:
+        out = subprocess.run(["fc-list", ":", "family"], capture_output=True, text=True, timeout=10)
+    except (subprocess.SubprocessError, OSError):
+        return set()
+    families: set[str] = set()
+    for line in out.stdout.splitlines():
+        for fam in line.split(","):
+            families.add(fam.strip().lower())
+    return families
+
+
+def _font_flags() -> list[str]:
+    """Pandoc -V font flags, preferring Lato but degrading to whatever is installed.
+
+    If none of the candidates are present (or fc-list is unavailable), returns no
+    font flags so XeLaTeX uses its default (Latin Modern) — the PDF still renders.
+    """
+    families = _fc_families()
+
+    def pick(candidates: list[str]) -> str | None:
+        for c in candidates:
+            if c.lower() in families:
+                return c
+        return None
+
+    flags: list[str] = []
+    main = pick(["Lato", "DejaVu Sans", "Noto Sans"])
+    if main:
+        flags += ["-V", f"mainfont={main}", "-V", f"sansfont={main}"]
+    mono = pick(["DejaVu Sans Mono", "Noto Sans Mono", "Latin Modern Mono"])
+    if mono:
+        flags += ["-V", f"monofont={mono}"]
+    return flags
+
+
 def _render_pdf(md_path: Path, pdf_path: Path) -> bool:
     fd, header_path = tempfile.mkstemp(suffix=".tex")
     try:
@@ -576,12 +617,7 @@ def _render_pdf(md_path: Path, pdf_path: Path) -> bool:
                 "--pdf-engine=xelatex",
                 "-H",
                 header_path,
-                "-V",
-                "mainfont=Lato",
-                "-V",
-                "sansfont=Lato",
-                "-V",
-                "monofont=DejaVu Sans Mono",
+                *_font_flags(),
                 "-V",
                 "colorlinks=true",
                 "-V",

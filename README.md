@@ -49,11 +49,33 @@ Requires Python 3.10+ and Claude Code session history on your machine.
 
 ```bash
 pip install -e .
-
-# Optional: PDF output needs pandoc (Markdown + JSON work without it)
-#   macOS:  brew install pandoc
-#   Ubuntu: sudo apt install pandoc texlive-latex-base
 ```
+
+### PDF output (optional)
+
+Markdown and JSON always render with no extra tooling. The PDF needs pandoc plus a
+XeLaTeX toolchain (the report uses `tcolorbox`, `pgfplots`, `titlesec`, `fancyhdr`):
+
+```bash
+# macOS
+brew install pandoc
+brew install --cask basictex          # then, in a new shell:
+sudo tlmgr update --self
+sudo tlmgr install tcolorbox pgfplots titlesec fancyhdr multirow
+
+# Ubuntu / Debian
+sudo apt install pandoc texlive-xetex texlive-latex-extra texlive-pictures fonts-lato
+```
+
+The report prefers the **Lato** font but falls back automatically to DejaVu Sans or the
+XeLaTeX default if Lato isn't installed, so the PDF always renders. If the LaTeX toolchain
+is missing entirely, you still get `profile.md` and `profile.json`.
+
+### Optional: GitHub planning signal
+
+Install the GitHub [`gh` CLI](https://cli.github.com/) and authenticate (`gh auth login`)
+to populate the planning signals (issues authored, PR→issue linkage). Without it, that
+section is simply skipped.
 
 ## Usage
 
