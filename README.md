@@ -8,12 +8,42 @@ that turns your coding activity into a shareable profile with archetype cards ("
 differences: it runs entirely on your own computer, and it builds the profile from your actual
 Claude Code history and git commits instead of asking you to connect accounts to a website.
 
+## Quickstart
+
+Fastest path. fully offline, no AI, factual cards + metrics only:
+
+```bash
+git clone https://github.com/adamkwhite/builder-profile && cd builder-profile
+pip install -e .
+builder-profile --no-llm --output ./output
+```
+
+This writes `profile.md` and `profile.json` immediately (plus `profile.pdf` if you have the
+PDF toolchain. see [Install](#install)).
+
+### Or let Claude Code set it up for you
+
+Paste this prompt into Claude Code and it will clone, install everything for your OS, and run it:
+
+```
+Set up and run builder-profile from https://github.com/adamkwhite/builder-profile on this
+machine. Clone it if it isn't already here, then `pip install -e .`. Then install the PDF
+toolchain for my operating system: pandoc, a XeLaTeX setup including the tcolorbox, pgfplots,
+titlesec and fancyhdr packages, and the Lato font. On Ubuntu/Debian use apt
+(texlive-xetex texlive-latex-extra texlive-pictures fonts-lato); on macOS use Homebrew
+(pandoc plus basictex, then tlmgr install tcolorbox pgfplots titlesec fancyhdr). When that's
+done, run `builder-profile --no-llm --output ./output` and open ./output/profile.pdf. If any
+dependency can't be installed, fall back to the Markdown report and tell me exactly what's
+missing.
+```
+
 ## What you get
 
 A one-page profile that reads like a personality card deck for how you build software:
 
-- An **archetype** (The Architect, Quality Guardian, Velocity Machine, Night Owl) plus a
-  written portrait of how you work.
+- An **archetype** (one of nine: The Architect, Quality Guardian, Velocity Machine, Night Owl,
+  The Orchestrator, The Firefighter, The Marathoner, The Sprinter, The Polymath) plus a written
+  portrait of how you work, and a radar chart scoring you 0-10 on all nine.
 - **Insight cards** with real numbers from your own history: when you're most productive, how
   much you shipped, your longest agent run, how often you change course mid-task, how polite
   you are to your AI, your most cryptic one-line prompt, your test discipline, and more.
