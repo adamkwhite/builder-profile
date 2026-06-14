@@ -195,14 +195,19 @@ def _build_factual_cards(sig: BehavioralSignals) -> list[InsightCard]:
             )
         )
 
-    # Prompt length
+    # Prompt length — calibrated so single-digit averages read as terse, not
+    # "thorough" (a 9-word prompt is a dispatch, not detailed context).
     if sig.avg_prompt_words > 0:
-        if sig.avg_prompt_words < 8:
+        n = f"{sig.avg_prompt_words:.0f}"
+        if sig.avg_prompt_words < 12:
             title = "Straight to the point"
-            body = f"{sig.avg_prompt_words:.0f} words on average. You say a lot with a little."
+            body = f"{n} words per prompt on average. You say a lot with a little."
+        elif sig.avg_prompt_words < 25:
+            title = "Clear and direct"
+            body = f"{n} words per prompt on average. Enough to steer, no filler."
         else:
             title = "Detailed director"
-            body = f"{sig.avg_prompt_words:.0f} words per prompt on average. You give thorough context."
+            body = f"{n} words per prompt on average. You give thorough context."
         cards.append(
             InsightCard(
                 category="How long are your prompts?",
