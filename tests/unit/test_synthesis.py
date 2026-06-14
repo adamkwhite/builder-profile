@@ -9,6 +9,23 @@ def _prompt_card(avg_words):
     return cards[0]
 
 
+class TestProductivityCard:
+    def _timing_card(self, peak):
+        sig = BehavioralSignals(peak_hour=peak)
+        cards = [c for c in _build_factual_cards(sig) if c.signal == "peak_hour"]
+        assert len(cards) == 1
+        return cards[0]
+
+    def test_evening_peak_labelled_night_owl(self):
+        assert self._timing_card(21).title == "Night owl"
+
+    def test_overnight_peak_labelled_night_owl(self):
+        assert self._timing_card(2).title == "Night owl"
+
+    def test_daytime_peak_not_night_owl(self):
+        assert self._timing_card(14).title == "Peak: 14:00"
+
+
 class TestPromptLengthCard:
     def test_terse_average_is_not_thorough(self):
         # 9 words is a dispatch, not thorough context (regression).

@@ -127,7 +127,8 @@ def _build_factual_cards(sig: BehavioralSignals) -> list[InsightCard]:
     # Productivity timing
     if sig.peak_hour is not None:
         hour = sig.peak_hour
-        label = "Night owl" if hour >= 22 or hour < 4 else f"Peak: {hour}:00"
+        # Evening (>=21) and overnight peaks read as night-owl, matching the radar.
+        label = "Night owl" if hour >= 21 or hour < 5 else f"Peak: {hour}:00"
         pct = f"{sig.late_night_pct:.0%}" if sig.late_night_pct > 0.3 else ""
         body = f"Peak coding hour is {hour}:00."
         if pct:
