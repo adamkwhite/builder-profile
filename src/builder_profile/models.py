@@ -125,6 +125,7 @@ class BehavioralSignals:
     peak_hour: int | None = None
     late_night_pct: float = 0.0
     hourly_distribution: dict = field(default_factory=dict)
+    weekday_distribution: dict = field(default_factory=dict)
     best_shipping_day: str = ""
     # Volume
     total_commits: int = 0

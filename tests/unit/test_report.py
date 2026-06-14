@@ -6,13 +6,16 @@ from unittest.mock import MagicMock, patch
 from builder_profile.models import BehavioralProfile, BehavioralSignals, InsightCard
 from builder_profile.report import (
     _fmt_cards,
+    _fmt_charts,
     _fmt_cover,
     _fmt_metrics,
+    _fmt_radar,
     _latex_table,
     _render_pdf,
     _short_model,
     _write_json,
     _write_markdown,
+    archetype_scores,
     generate_report,
 )
 
@@ -131,6 +134,45 @@ class TestFmtCards:
 
     def test_empty_cards_returns_empty(self):
         assert _fmt_cards(_make_profile(insight_cards=[])) == []
+
+
+class TestArchetypeScores:
+    def test_nine_scores_in_range(self):
+        scores = archetype_scores(_make_sig())
+        assert len(scores) == 9
+        assert all(0.0 <= v <= 10.0 for v in scores.values())
+
+    def test_signals_drive_scores(self):
+        orch = archetype_scores(_make_sig(max_parallel_agents=12))["The Orchestrator"]
+        none = archetype_scores(_make_sig(max_parallel_agents=0))["The Orchestrator"]
+        assert orch > none
+        assert orch >= 9.0
+
+
+class TestRadar:
+    def test_renders_tikz_with_all_axes(self):
+        out = "\n".join(_fmt_radar(_make_sig()))
+        assert "## Archetype mix" in out
+        assert r"\begin{tikzpicture}" in out
+        for label in ("Architect", "Guardian", "Velocity", "Orchestrator", "Polymath"):
+            assert label in out
+
+    def test_empty_signals_no_radar(self):
+        assert _fmt_radar(BehavioralSignals()) == []
+
+
+class TestWeekdayChart:
+    def test_weekday_chart_present(self):
+        sig = _make_sig(
+            weekday_distribution={"Monday": 10, "Tuesday": 8, "Friday": 4},
+        )
+        out = "\n".join(_fmt_charts(sig))
+        assert "When you ship" in out
+        assert "symbolic x coords={Mon,Tue,Wed,Thu,Fri,Sat,Sun}" in out
+
+    def test_no_weekday_chart_when_absent(self):
+        out = "\n".join(_fmt_charts(_make_sig(weekday_distribution={})))
+        assert "When you ship" not in out
 
 
 class TestLatexTable:
