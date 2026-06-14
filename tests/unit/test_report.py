@@ -5,10 +5,12 @@ from unittest.mock import MagicMock, patch
 
 from builder_profile.models import BehavioralProfile, BehavioralSignals, InsightCard
 from builder_profile.report import (
-    _fmt_card_grid,
-    _fmt_metrics_table,
-    _fmt_signals_strip,
+    _fmt_cards,
+    _fmt_cover,
+    _fmt_metrics,
+    _latex_table,
     _render_pdf,
+    _short_model,
     _write_json,
     _write_markdown,
     generate_report,
@@ -75,87 +77,100 @@ def _make_profile(**kwargs: Any) -> BehavioralProfile:
     return BehavioralProfile(**defaults)
 
 
-class TestFmtSignalsStrip:
-    def test_includes_key_metrics(self):
-        sig = _make_sig()
-        lines = _fmt_signals_strip(sig)
-        combined = " ".join(lines)
+class TestShortModel:
+    def test_shortens_known_families(self):
+        assert _short_model("claude-sonnet-4-6") == "Sonnet 4.6"
+        assert _short_model("claude-opus-4-8") == "Opus 4.8"
+        assert _short_model("claude-haiku-4-5-20251001") == "Haiku 4.5"
+
+    def test_passes_through_unknown(self):
+        assert _short_model("gpt-4") == "gpt-4"
+
+
+class TestFmtCover:
+    def test_includes_badges(self):
+        combined = " ".join(_fmt_cover(_make_profile()))
         assert "100" in combined  # commits
-        assert "10,000" in combined  # insertions
+        assert "10k" in combined  # insertions, compact
         assert "23:00" in combined  # peak hour
         assert "10d" in combined  # streak
 
-    def test_includes_date_range(self):
-        sig = _make_sig()
-        lines = _fmt_signals_strip(sig)
-        assert any("2026-01-01" in line for line in lines)
-        assert any("2026-03-31" in line for line in lines)
+    def test_includes_archetype_title_and_date_range(self):
+        combined = " ".join(_fmt_cover(_make_profile()))
+        assert "Velocity Machine" in combined
+        assert "2026-01-01" in combined
+        assert "2026-03-31" in combined
 
-    def test_zero_values_omitted(self):
-        sig = _make_sig(total_prs=0, streak_days_max=0)
-        lines = _fmt_signals_strip(sig)
-        combined = " ".join(lines)
+    def test_zero_values_omit_badges(self):
+        # archetype="" avoids the tagline (which can contain words like "streaks").
+        profile = _make_profile(
+            archetype="",
+            secondary_archetypes=[],
+            signals=_make_sig(total_prs=0, streak_days_max=0),
+        )
+        combined = " ".join(_fmt_cover(profile))
         assert "PRs" not in combined
         assert "streak" not in combined
 
 
-class TestFmtCardGrid:
-    def test_renders_all_cards(self):
-        profile = _make_profile()
-        lines = _fmt_card_grid(profile)
-        combined = "\n".join(lines)
+class TestFmtCards:
+    def test_renders_all_cards_as_boxes(self):
+        combined = "\n".join(_fmt_cards(_make_profile()))
+        assert combined.count(r"\begin{icard}") == 2
         assert "Night owl" in combined
         assert "10k lines" in combined
         assert "When are you most productive?" in combined
+        assert r"\begin{multicols}{2}" in combined
 
     def test_empty_cards_returns_empty(self):
-        profile = _make_profile(insight_cards=[])
-        lines = _fmt_card_grid(profile)
-        assert lines == []
-
-    def test_each_card_has_italic_category(self):
-        profile = _make_profile()
-        lines = _fmt_card_grid(profile)
-        italic_lines = [ln for ln in lines if ln.startswith("*") and ln.endswith("*")]
-        assert len(italic_lines) == 2
+        assert _fmt_cards(_make_profile(insight_cards=[])) == []
 
 
-class TestFmtMetricsTable:
-    def test_contains_markdown_table(self):
-        sig = _make_sig()
-        lines = _fmt_metrics_table(sig)
-        combined = "\n".join(lines)
-        assert "| **Output** | |" in combined
-        assert "|:---|---:|" in combined
+class TestLatexTable:
+    def test_accent_header_and_rows(self):
+        out = _latex_table("Output", [("Commits", "100"), ("PRs", "50")])
+        assert r"\rowcolor{accent}" in out
+        assert "Output" in out
+        assert "Commits" in out and "100" in out
+
+    def test_empty_rows_returns_blank(self):
+        assert _latex_table("Empty", [("X", "0"), ("Y", "")]) == ""
+
+    def test_escapes_special_chars(self):
+        out = _latex_table("Coverage", [("Test coverage", "89%")])
+        assert r"89\%" in out
+
+
+class TestFmtMetrics:
+    def test_contains_tables_and_values(self):
+        combined = "\n".join(_fmt_metrics(_make_sig()))
+        assert r"\begin{multicols}{2}" in combined
+        assert "Output" in combined
+        assert "Commits" in combined
 
     def test_zero_rows_excluded(self):
-        sig = _make_sig(max_parallel_agents=0, politeness_count=0)
-        lines = _fmt_metrics_table(sig)
-        combined = "\n".join(lines)
+        combined = "\n".join(_fmt_metrics(_make_sig(max_parallel_agents=0, politeness_count=0)))
         assert "Max parallel agents" not in combined
         assert "Politeness count" not in combined
 
-    def test_model_distribution_shown(self):
-        sig = _make_sig(model_distribution={"claude-opus-4-6": 0.7})
-        lines = _fmt_metrics_table(sig)
-        combined = "\n".join(lines)
-        assert "claude-opus-4-6" in combined
+    def test_model_name_shortened(self):
+        combined = "\n".join(_fmt_metrics(_make_sig(model_distribution={"claude-opus-4-6": 0.7})))
+        assert "Opus 4.6" in combined
+        assert "claude-opus-4-6" not in combined
 
 
 class TestWriteJson:
     def test_creates_valid_json(self, tmp_path):
-        profile = _make_profile()
         out = tmp_path / "profile.json"
-        _write_json(profile, out)
+        _write_json(_make_profile(), out)
         assert out.exists()
         data = json.loads(out.read_text())
         assert data["archetype"] == "Velocity Machine"
         assert data["portrait"] == "A fast-shipping developer."
 
     def test_serializes_nested_dataclasses(self, tmp_path):
-        profile = _make_profile()
         out = tmp_path / "profile.json"
-        _write_json(profile, out)
+        _write_json(_make_profile(), out)
         data = json.loads(out.read_text())
         assert data["signals"]["total_commits"] == 100
         assert data["insight_cards"][0]["title"] == "Night owl"
@@ -163,74 +178,62 @@ class TestWriteJson:
 
 class TestWriteMarkdown:
     def test_creates_file(self, tmp_path):
-        profile = _make_profile()
         out = tmp_path / "profile.md"
-        _write_markdown(profile, out)
+        _write_markdown(_make_profile(), out)
         assert out.exists()
 
     def test_yaml_frontmatter(self, tmp_path):
-        profile = _make_profile()
         out = tmp_path / "profile.md"
-        _write_markdown(profile, out)
+        _write_markdown(_make_profile(), out)
         content = out.read_text()
         assert content.startswith("---")
-        assert "geometry: margin=0.75in" in content
+        assert "geometry: margin=0.7in" in content
 
-    def test_archetype_heading(self, tmp_path):
-        profile = _make_profile()
+    def test_archetype_title_present(self, tmp_path):
         out = tmp_path / "profile.md"
-        _write_markdown(profile, out)
-        content = out.read_text()
-        assert "# Velocity Machine" in content
+        _write_markdown(_make_profile(), out)
+        assert "Velocity Machine" in out.read_text()
 
     def test_secondary_archetype_in_desc(self, tmp_path):
-        profile = _make_profile()
         out = tmp_path / "profile.md"
-        _write_markdown(profile, out)
-        content = out.read_text()
-        assert "Night Owl" in content
+        _write_markdown(_make_profile(), out)
+        assert "Night Owl" in out.read_text()
 
     def test_portrait_section(self, tmp_path):
-        profile = _make_profile()
         out = tmp_path / "profile.md"
-        _write_markdown(profile, out)
+        _write_markdown(_make_profile(), out)
         content = out.read_text()
         assert "## Portrait" in content
         assert "A fast-shipping developer." in content
 
     def test_growth_edge_section(self, tmp_path):
-        profile = _make_profile()
         out = tmp_path / "profile.md"
-        _write_markdown(profile, out)
+        _write_markdown(_make_profile(), out)
         content = out.read_text()
         assert "## Growth Edge" in content
         assert "plan mode" in content
 
-    def test_no_portrait_no_extra_newpage(self, tmp_path):
-        profile = _make_profile(portrait="", growth_edge="")
+    def test_no_portrait_single_newpage(self, tmp_path):
         out = tmp_path / "profile.md"
-        _write_markdown(profile, out)
+        _write_markdown(_make_profile(portrait="", growth_edge=""), out)
         content = out.read_text()
         assert "## Portrait" not in content
         assert "## Growth Edge" not in content
-        # Cover + insights share page 1 (no break), narrative absent, so the only
-        # page break is before the metrics tables.
+        # Cover + insights + charts share page 1 (no break); narrative absent, so
+        # the only page break is before the metrics tables.
         assert content.count("\\newpage") == 1
 
-    def test_metrics_table_present(self, tmp_path):
-        profile = _make_profile()
+    def test_metrics_section_present(self, tmp_path):
         out = tmp_path / "profile.md"
-        _write_markdown(profile, out)
+        _write_markdown(_make_profile(), out)
         content = out.read_text()
         assert "## Metrics" in content
         assert "Commits" in content
 
     def test_footer(self, tmp_path):
-        profile = _make_profile()
         out = tmp_path / "profile.md"
-        _write_markdown(profile, out)
-        content = out.read_text()
-        assert "Generated by builder-profile" in content
+        _write_markdown(_make_profile(), out)
+        assert "Generated by builder-profile" in out.read_text()
 
 
 class TestRenderPdf:
@@ -246,6 +249,7 @@ class TestRenderPdf:
         call_args = mock_run.call_args[0][0]
         assert "pandoc" in call_args
         assert "--pdf-engine=xelatex" in call_args
+        assert "mainfont=Lato" in call_args
 
     def test_nonzero_returncode_returns_false(self, tmp_path):
         md = tmp_path / "profile.md"
@@ -255,53 +259,46 @@ class TestRenderPdf:
         mock_result.returncode = 1
         mock_result.stderr = "error"
         with patch("subprocess.run", return_value=mock_result):
-            result = _render_pdf(md, pdf)
-        assert result is False
+            assert _render_pdf(md, pdf) is False
 
     def test_file_not_found_returns_false(self, tmp_path):
         md = tmp_path / "profile.md"
         md.write_text("# test")
         pdf = tmp_path / "profile.pdf"
         with patch("subprocess.run", side_effect=FileNotFoundError):
-            result = _render_pdf(md, pdf)
-        assert result is False
+            assert _render_pdf(md, pdf) is False
 
     def test_timeout_returns_false(self, tmp_path):
         md = tmp_path / "profile.md"
         md.write_text("# test")
         pdf = tmp_path / "profile.pdf"
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("pandoc", 60)):
-            result = _render_pdf(md, pdf)
-        assert result is False
+            assert _render_pdf(md, pdf) is False
 
 
 class TestGenerateReport:
     def test_returns_pdf_and_json_paths(self, tmp_path):
-        profile = _make_profile()
         mock_result = MagicMock()
         mock_result.returncode = 0
         with patch("subprocess.run", return_value=mock_result):
-            pdf_path, json_path = generate_report(profile, tmp_path)
+            pdf_path, json_path = generate_report(_make_profile(), tmp_path)
         assert pdf_path == tmp_path / "profile.pdf"
         assert json_path == tmp_path / "profile.json"
 
     def test_returns_none_pdf_on_failure(self, tmp_path):
-        profile = _make_profile()
         with patch("subprocess.run", side_effect=FileNotFoundError):
-            pdf_path, json_path = generate_report(profile, tmp_path)
+            pdf_path, json_path = generate_report(_make_profile(), tmp_path)
         assert pdf_path is None
         assert json_path == tmp_path / "profile.json"
 
     def test_creates_output_dir(self, tmp_path):
-        profile = _make_profile()
         out_dir = tmp_path / "nested" / "output"
         with patch("subprocess.run", side_effect=FileNotFoundError):
-            generate_report(profile, out_dir)
+            generate_report(_make_profile(), out_dir)
         assert out_dir.exists()
 
     def test_writes_json_and_markdown(self, tmp_path):
-        profile = _make_profile()
         with patch("subprocess.run", side_effect=FileNotFoundError):
-            generate_report(profile, tmp_path)
+            generate_report(_make_profile(), tmp_path)
         assert (tmp_path / "profile.json").exists()
         assert (tmp_path / "profile.md").exists()
